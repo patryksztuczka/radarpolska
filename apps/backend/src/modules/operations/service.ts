@@ -63,6 +63,30 @@ export interface OperationsRun {
   } | null;
 }
 
+export interface PublicEntityCatalogueEntry {
+  readonly sourceId: string;
+  readonly name: string;
+  readonly type: string;
+  readonly legalForm: string;
+  readonly ownershipForm: string;
+  readonly financingForm: string;
+  readonly location: {
+    readonly voivodeship: string;
+    readonly county: string;
+    readonly municipality: string;
+  };
+  readonly raw: Record<string, string>;
+}
+
+export interface PublicEntityCatalogueSummary {
+  readonly totalPublicEntities: number;
+  readonly byType: Record<string, number>;
+  readonly byLegalForm: Record<string, number>;
+  readonly byOwnershipForm: Record<string, number>;
+  readonly byFinancingForm: Record<string, number>;
+  readonly byLocation: Record<string, number>;
+}
+
 export interface OperationsOverview {
   readonly summary: {
     readonly totalRuns: number;
@@ -71,6 +95,7 @@ export interface OperationsOverview {
     readonly failedRuns: number;
     readonly lastCompletedAt: string | null;
   };
+  readonly catalogue: PublicEntityCatalogueSummary;
   readonly runs: readonly OperationsRun[];
 }
 
@@ -80,6 +105,11 @@ interface OperationsRunStore {
   findByOperationKey(operationKey: string): OperationsRun | undefined;
 }
 
+interface PublicEntityCatalogueStore {
+  list(): readonly PublicEntityCatalogueEntry[];
+  upsert(entry: PublicEntityCatalogueEntry): PublicEntityCatalogueEntry;
+}
+
 export interface TemporaryKppSourceStorage {
   putTemporaryObject(input: {
     readonly key: string;
@@ -87,10 +117,12 @@ export interface TemporaryKppSourceStorage {
     readonly metadata: Record<string, string>;
     readonly contentType: string | null;
   }): Promise<void>;
+  getTemporaryObject(key: string): Promise<ReadableStream<Uint8Array> | null>;
   deleteTemporaryObject(key: string): Promise<void>;
 }
 
 export interface OperationsServices {
+  readonly catalogue: PublicEntityCatalogueStore;
   readonly fetch: typeof fetch;
   readonly store: OperationsRunStore;
   readonly storage: TemporaryKppSourceStorage | null;
@@ -102,6 +134,7 @@ interface DiscoverLatestKppSourceOptions {
 }
 
 interface GetOperationsOverviewOptions {
+  readonly catalogue?: PublicEntityCatalogueStore;
   readonly store: OperationsRunStore;
 }
 
@@ -113,6 +146,12 @@ interface StageLatestKppSourceOptions {
 
 interface DeleteExpiredTemporaryKppStagingObjectsOptions {
   readonly now?: Date;
+  readonly storage: TemporaryKppSourceStorage;
+  readonly store: OperationsRunStore;
+}
+
+interface ImportCurrentKppCatalogueOptions {
+  readonly catalogue: PublicEntityCatalogueStore;
   readonly storage: TemporaryKppSourceStorage;
   readonly store: OperationsRunStore;
 }
@@ -155,6 +194,14 @@ const emptyOverview: OperationsOverview = {
     failedRuns: 0,
     lastCompletedAt: null,
   },
+  catalogue: {
+    totalPublicEntities: 0,
+    byType: {},
+    byLegalForm: {},
+    byOwnershipForm: {},
+    byFinancingForm: {},
+    byLocation: {},
+  },
   runs: [],
 };
 
@@ -187,6 +234,16 @@ function resolveKppCsvDownloadUrl(resource: KppDatasetResource) {
 
 function compareResourceDates(left: KppDatasetResource, right: KppDatasetResource) {
   return left.attributes.data_date.localeCompare(right.attributes.data_date);
+}
+
+function insertSorted<T>(items: readonly T[], item: T, compare: (left: T, right: T) => number) {
+  const insertBefore = items.findIndex((existingItem) => compare(item, existingItem) < 0);
+
+  if (insertBefore === -1) {
+    return [...items, item];
+  }
+
+  return [...items.slice(0, insertBefore), item, ...items.slice(insertBefore)];
 }
 
 async function fetchKppResources(fetcher: typeof fetch) {
@@ -295,6 +352,179 @@ function createTemporaryStagingMetadata(
   };
 }
 
+function parseSemicolonDelimitedCsvChunk(
+  input: string,
+  state: {
+    row: string[];
+    field: string;
+    quoted: boolean;
+    rows: string[][];
+    skipNextLineFeed: boolean;
+  },
+) {
+  const rows: string[][] = [];
+
+  for (let index = 0; index < input.length; index += 1) {
+    const char = input[index];
+    const nextChar = input[index + 1];
+
+    if (state.skipNextLineFeed) {
+      state.skipNextLineFeed = false;
+
+      if (char === "\n") {
+        continue;
+      }
+    }
+
+    if (char === '"') {
+      if (state.quoted && nextChar === '"') {
+        state.field += char;
+        index += 1;
+      } else {
+        state.quoted = !state.quoted;
+      }
+    } else if (char === ";" && !state.quoted) {
+      state.row.push(state.field);
+      state.field = "";
+    } else if ((char === "\n" || char === "\r") && !state.quoted) {
+      if (char === "\r" && nextChar === "\n") {
+        index += 1;
+      } else if (char === "\r") {
+        state.skipNextLineFeed = true;
+      }
+
+      state.row.push(state.field);
+      rows.push(state.row);
+      state.row = [];
+      state.field = "";
+    } else {
+      state.field += char;
+    }
+  }
+
+  state.rows.push(...rows);
+}
+
+async function parseSemicolonDelimitedCsvStream(body: ReadableStream<Uint8Array>) {
+  const reader = body.getReader();
+  const decoder = new TextDecoder();
+  const state = {
+    row: [] as string[],
+    field: "",
+    quoted: false,
+    rows: [] as string[][],
+    skipNextLineFeed: false,
+  };
+
+  async function readNextChunk(): Promise<void> {
+    const chunk = await reader.read();
+
+    if (chunk.done) {
+      const remaining = decoder.decode();
+
+      if (remaining) {
+        parseSemicolonDelimitedCsvChunk(remaining, state);
+      }
+
+      return;
+    }
+
+    parseSemicolonDelimitedCsvChunk(decoder.decode(chunk.value, { stream: true }), state);
+
+    return readNextChunk();
+  }
+
+  try {
+    await readNextChunk();
+  } finally {
+    reader.releaseLock();
+  }
+
+  if (state.field || state.row.length) {
+    state.row.push(state.field);
+    state.rows.push(state.row);
+  }
+
+  const firstContentRow = state.rows.findIndex((candidate) =>
+    candidate.some((value) => value.trim()),
+  );
+  const headers = firstContentRow === -1 ? [] : (state.rows[firstContentRow] ?? []);
+  const dataRows = firstContentRow === -1 ? [] : state.rows.slice(firstContentRow + 1);
+
+  return dataRows.map((values) =>
+    Object.fromEntries(
+      headers.map((header, index) => [header.trim(), values[index]?.trim() ?? ""]),
+    ),
+  );
+}
+
+function isAffirmative(value: string | undefined) {
+  return ["1", "t", "tak", "true", "yes", "aktywny"].includes(value?.trim().toLowerCase() ?? "");
+}
+
+function readKppField(row: Record<string, string>, aliases: readonly string[]) {
+  return (
+    aliases
+      .map((alias) => row[alias])
+      .find((value) => value !== undefined)
+      ?.trim() ?? ""
+  );
+}
+
+function toPublicEntityCatalogueEntry(
+  row: Record<string, string>,
+): PublicEntityCatalogueEntry | null {
+  const sourceId = readKppField(row, ["KPPID", "Identyfikator KPP"]);
+  const active = readKppField(row, ["Czy aktywny", "Status podmiotu"]);
+  const publicEntity = readKppField(row, ["Czy publiczny", "Podmiot publiczny"]);
+
+  if (!sourceId || !isAffirmative(active) || !isAffirmative(publicEntity)) {
+    return null;
+  }
+
+  return {
+    sourceId,
+    name: readKppField(row, ["Nazwa", "Nazwa podmiotu"]),
+    type: readKppField(row, ["Typ podmiotu", "Rodzaj podmiotu"]),
+    legalForm: readKppField(row, ["Forma prawna", "Forma prawna podmiotu"]),
+    ownershipForm: readKppField(row, ["Forma własności", "Forma własności podmiotu"]),
+    financingForm: readKppField(row, ["Forma finansowania", "Forma finansowania podmiotu"]),
+    location: {
+      voivodeship: readKppField(row, ["Województwo"]),
+      county: readKppField(row, ["Powiat"]),
+      municipality: readKppField(row, ["Gmina"]),
+    },
+    raw: row,
+  };
+}
+
+function incrementCount(counts: Record<string, number>, key: string) {
+  if (!key) {
+    return counts;
+  }
+
+  return {
+    ...counts,
+    [key]: (counts[key] ?? 0) + 1,
+  };
+}
+
+function summarizeCatalogue(
+  entries: readonly PublicEntityCatalogueEntry[],
+): PublicEntityCatalogueSummary {
+  return entries.reduce<PublicEntityCatalogueSummary>(
+    (summary, entry) => ({
+      totalPublicEntities: summary.totalPublicEntities + 1,
+      byType: incrementCount(summary.byType, entry.type),
+      byLegalForm: incrementCount(summary.byLegalForm, entry.legalForm),
+      byOwnershipForm: incrementCount(summary.byOwnershipForm, entry.ownershipForm),
+      byFinancingForm: incrementCount(summary.byFinancingForm, entry.financingForm),
+      byLocation: incrementCount(summary.byLocation, entry.location.voivodeship),
+    }),
+    emptyOverview.catalogue,
+  );
+}
+
 async function checksumStream(body: ReadableStream<Uint8Array>) {
   const reader = body.getReader();
   const hash = createHash("sha256");
@@ -330,8 +560,12 @@ export function createInMemoryOperationsRunStore(): OperationsRunStore {
 
   return {
     list() {
-      return [...runs.values()].sort((left, right) =>
-        right.timing.queuedAt.localeCompare(left.timing.queuedAt),
+      return [...runs.values()].reduce<OperationsRun[]>(
+        (sortedRuns, run) =>
+          insertSorted(sortedRuns, run, (left, right) =>
+            right.timing.queuedAt.localeCompare(left.timing.queuedAt),
+          ),
+        [],
       );
     },
     save(run) {
@@ -344,6 +578,26 @@ export function createInMemoryOperationsRunStore(): OperationsRunStore {
   };
 }
 
+export function createInMemoryPublicEntityCatalogueStore(): PublicEntityCatalogueStore {
+  const entries = new Map<string, PublicEntityCatalogueEntry>();
+
+  return {
+    list() {
+      return [...entries.values()].reduce<PublicEntityCatalogueEntry[]>(
+        (sortedEntries, entry) =>
+          insertSorted(sortedEntries, entry, (left, right) =>
+            left.sourceId.localeCompare(right.sourceId),
+          ),
+        [],
+      );
+    },
+    upsert(entry) {
+      entries.set(entry.sourceId, entry);
+      return entry;
+    },
+  };
+}
+
 export function createR2TemporaryKppSourceStorage(bucket: R2Bucket): TemporaryKppSourceStorage {
   return {
     async putTemporaryObject({ key, body, metadata, contentType }) {
@@ -351,6 +605,9 @@ export function createR2TemporaryKppSourceStorage(bucket: R2Bucket): TemporaryKp
         customMetadata: metadata,
         httpMetadata: contentType ? { contentType } : undefined,
       });
+    },
+    async getTemporaryObject(key) {
+      return (await bucket.get(key))?.body ?? null;
     },
     async deleteTemporaryObject(key) {
       await bucket.delete(key);
@@ -363,9 +620,40 @@ export function createOperationsServices(
 ): OperationsServices {
   return {
     fetch: overrides?.fetch ?? fetch,
+    catalogue: overrides?.catalogue ?? createInMemoryPublicEntityCatalogueStore(),
     store: overrides?.store ?? createInMemoryOperationsRunStore(),
     storage: overrides?.storage ?? null,
   };
+}
+
+export async function importCurrentKppCatalogue({
+  catalogue,
+  storage,
+  store,
+}: ImportCurrentKppCatalogueOptions) {
+  const stagingRun = store.findByOperationKey(kppStagingOperationKey);
+  const r2Key = stagingRun?.staging?.status === "staged" ? stagingRun.staging.r2Key : null;
+
+  if (!r2Key) {
+    throw new Error("KPP source must be staged before catalogue import");
+  }
+
+  const body = await storage.getTemporaryObject(r2Key);
+
+  if (!body) {
+    throw new Error("Staged KPP source is unavailable");
+  }
+
+  const rows = await parseSemicolonDelimitedCsvStream(body);
+  const entries = rows
+    .map(toPublicEntityCatalogueEntry)
+    .filter((entry): entry is PublicEntityCatalogueEntry => entry !== null);
+
+  for (const entry of entries) {
+    catalogue.upsert(entry);
+  }
+
+  return entries;
 }
 
 export async function discoverLatestKppSource({
@@ -378,10 +666,20 @@ export async function discoverLatestKppSource({
     throw new Error("KPP dataset does not expose any resources");
   }
 
-  const latestSupportedResource = [...resources]
-    .sort(compareResourceDates)
-    .reverse()
-    .find((resource) => resolveKppCsvDownloadUrl(resource));
+  const latestSupportedResource = resources.reduce<KppDatasetResource | undefined>(
+    (latestResource, resource) => {
+      if (!resolveKppCsvDownloadUrl(resource)) {
+        return latestResource;
+      }
+
+      if (!latestResource || compareResourceDates(latestResource, resource) < 0) {
+        return resource;
+      }
+
+      return latestResource;
+    },
+    undefined,
+  );
 
   if (!latestSupportedResource) {
     throw new Error("KPP dataset does not expose a supported CSV resource");
@@ -591,12 +889,19 @@ export async function deleteExpiredTemporaryKppStagingObjects({
 }
 
 export async function getOperationsOverview({
+  catalogue,
   store,
 }: GetOperationsOverviewOptions): Promise<OperationsOverview> {
   const runs = store.list();
+  const catalogueSummary = catalogue
+    ? summarizeCatalogue(catalogue.list())
+    : emptyOverview.catalogue;
 
   if (!runs.length) {
-    return emptyOverview;
+    return {
+      ...emptyOverview,
+      catalogue: catalogueSummary,
+    };
   }
 
   const completedRuns = runs.filter((run) => run.status === "completed");
@@ -604,9 +909,15 @@ export async function getOperationsOverview({
     (run) => run.status === "failed" || run.status === "partially_failed",
   );
   const activeRuns = runs.filter((run) => run.status === "pending" || run.status === "running");
-  const lastCompletedRun = [...completedRuns].sort(
-    (left, right) => right.timing.finishedAt?.localeCompare(left.timing.finishedAt ?? "") ?? 0,
-  )[0];
+  const lastCompletedRun = completedRuns.reduce<OperationsRun | undefined>((latestRun, run) => {
+    if (!latestRun) {
+      return run;
+    }
+
+    return (run.timing.finishedAt ?? "").localeCompare(latestRun.timing.finishedAt ?? "") > 0
+      ? run
+      : latestRun;
+  }, undefined);
 
   return {
     summary: {
@@ -616,6 +927,7 @@ export async function getOperationsOverview({
       failedRuns: failedRuns.length,
       lastCompletedAt: lastCompletedRun?.timing.finishedAt ?? null,
     },
+    catalogue: catalogueSummary,
     runs,
   };
 }

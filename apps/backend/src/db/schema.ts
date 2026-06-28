@@ -78,3 +78,24 @@ export const operationRuns = pgTable("operation_runs", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+export interface PublicEntityLocationShape {
+  readonly voivodeship: string;
+  readonly county: string;
+  readonly municipality: string;
+}
+
+export const currentPublicEntityCatalogue = pgTable("current_public_entity_catalogue", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  sourceSystem: text("source_system").notNull().default("KPP"),
+  sourceId: text("source_id").notNull().unique(),
+  name: text("name").notNull(),
+  type: text("type").notNull(),
+  legalForm: text("legal_form").notNull(),
+  ownershipForm: text("ownership_form").notNull(),
+  financingForm: text("financing_form").notNull(),
+  location: jsonb("location").$type<PublicEntityLocationShape>().notNull(),
+  raw: jsonb("raw").$type<Record<string, string>>().notNull(),
+  importedAt: timestamp("imported_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});

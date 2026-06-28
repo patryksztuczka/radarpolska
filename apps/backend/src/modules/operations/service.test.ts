@@ -2,8 +2,10 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   createInMemoryOperationsRunStore,
+  createInMemoryPublicEntityCatalogueStore,
   discoverLatestKppSource,
   getOperationsOverview,
+  importCurrentKppCatalogue,
   deleteExpiredTemporaryKppStagingObjects,
   stageLatestKppSource,
   type TemporaryKppSourceStorage,
@@ -12,7 +14,229 @@ import {
 const kppResourcesUrl =
   "https://api.dane.gov.pl/datasets/3520,dane-podmiotow-swiadczacych-usugi-publiczne-z-kat/resources?page=1";
 
+function createStoreWithStagedKppSource() {
+  const store = createInMemoryOperationsRunStore();
+  const now = new Date().toISOString();
+
+  store.save({
+    id: "00000000-0000-4000-8000-000000000001",
+    kind: "import",
+    operationKey: "kpp-source-staging",
+    sourceLabel: "KPP fixture",
+    sourceUrl: "https://example.test/kpp.csv",
+    source: null,
+    staging: {
+      status: "staged",
+      r2Key: "tmp/kpp/fixture.csv",
+      byteSize: 1,
+      checksumSha256: "fixture",
+      retention: {
+        deleteAfter: now,
+        deleteAfterDays: 7,
+        deletionStatus: "pending",
+        lifecycle: "delete-after-7-days",
+        status: "temporary",
+      },
+    },
+    trigger: "manual",
+    status: "completed",
+    counters: {
+      discovered: 0,
+      queued: 0,
+      processed: 1,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    },
+    timing: {
+      queuedAt: now,
+      startedAt: now,
+      finishedAt: now,
+      durationMs: 0,
+    },
+    error: null,
+  });
+
+  return store;
+}
+
 describe("operations service", () => {
+  it("imports active public KPP rows from the staged semicolon-delimited CSV", async () => {
+    const store = createInMemoryOperationsRunStore();
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const stagedCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-1;Urząd Miasta Krakowa;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+      "KPP-2;Prywatna przychodnia;Tak;Nie;Przychodnia;Spółka;Prywatna;Prywatne;mazowieckie;Warszawa;Warszawa",
+      "KPP-3;Nieaktywny urząd;Nie;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;śląskie;Katowice;Katowice",
+    ].join("\n");
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new Response(stagedCsv).body;
+      },
+      async deleteTemporaryObject() {},
+    };
+
+    await discoverLatestKppSource({
+      fetch: async () =>
+        Response.json({
+          data: [
+            {
+              id: "2150707",
+              attributes: {
+                title:
+                  "Dane podmiotów świadczących usługi publiczne z Katalogu Podmiotów Publicznych - czerwiec 2026",
+                format: "csv",
+                data_date: "2026-06-26",
+                download_url: "https://example.test/kpp.csv",
+                csv_download_url: null,
+                file_url: "https://example.test/kpp.csv",
+                csv_file_url: null,
+              },
+            },
+          ],
+          links: {},
+        }),
+      store,
+    });
+    await stageLatestKppSource({
+      fetch: async () => new Response(stagedCsv),
+      storage,
+      store,
+    });
+
+    await importCurrentKppCatalogue({ catalogue, storage, store });
+
+    expect(catalogue.list()).toEqual([
+      expect.objectContaining({
+        sourceId: "KPP-1",
+        name: "Urząd Miasta Krakowa",
+        type: "Urząd",
+        legalForm: "Jednostka budżetowa",
+        ownershipForm: "Publiczna",
+        financingForm: "Budżet państwa",
+        location: {
+          voivodeship: "małopolskie",
+          county: "Kraków",
+          municipality: "Kraków",
+        },
+        raw: expect.objectContaining({
+          KPPID: "KPP-1",
+          Nazwa: "Urząd Miasta Krakowa",
+        }),
+      }),
+    ]);
+    await expect(getOperationsOverview({ catalogue, store })).resolves.toMatchObject({
+      catalogue: {
+        totalPublicEntities: 1,
+        byType: { Urząd: 1 },
+        byLegalForm: { "Jednostka budżetowa": 1 },
+        byOwnershipForm: { Publiczna: 1 },
+        byFinancingForm: { "Budżet państwa": 1 },
+        byLocation: { małopolskie: 1 },
+      },
+    });
+  });
+
+  it("skips active public KPP rows with empty identifiers", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new Response(
+          [
+            "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+            ";Urząd bez identyfikatora;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+          ].join("\n"),
+        ).body;
+      },
+      async deleteTemporaryObject() {},
+    };
+    const store = createStoreWithStagedKppSource();
+
+    await importCurrentKppCatalogue({ catalogue, storage, store });
+
+    expect(catalogue.list()).toEqual([]);
+  });
+
+  it("maps Polish KPP headers into catalogue fields", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new Response(
+          [
+            "Identyfikator KPP;Nazwa podmiotu;Status podmiotu;Podmiot publiczny;Rodzaj podmiotu;Forma prawna podmiotu;Forma własności podmiotu;Forma finansowania podmiotu;Województwo;Powiat;Gmina",
+            "ABC-123;Gminny Ośrodek Pomocy;aktywny;tak;Pomoc społeczna;Samorządowa jednostka organizacyjna;Samorządowa;Budżet JST;podlaskie;białostocki;Choroszcz",
+          ].join("\n"),
+        ).body;
+      },
+      async deleteTemporaryObject() {},
+    };
+    const store = createStoreWithStagedKppSource();
+
+    await importCurrentKppCatalogue({ catalogue, storage, store });
+
+    expect(catalogue.list()).toEqual([
+      expect.objectContaining({
+        sourceId: "ABC-123",
+        name: "Gminny Ośrodek Pomocy",
+        type: "Pomoc społeczna",
+        legalForm: "Samorządowa jednostka organizacyjna",
+        ownershipForm: "Samorządowa",
+        financingForm: "Budżet JST",
+        location: {
+          voivodeship: "podlaskie",
+          county: "białostocki",
+          municipality: "Choroszcz",
+        },
+      }),
+    ]);
+  });
+
+  it("parses staged KPP CSV without reading the whole object through Response.text", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const encoder = new TextEncoder();
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new ReadableStream<Uint8Array>({
+          start(controller) {
+            controller.enqueue(
+              encoder.encode(
+                "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina\n",
+              ),
+            );
+            controller.enqueue(
+              encoder.encode(
+                "KPP-1;Urząd Miasta Krakowa;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków\n",
+              ),
+            );
+            controller.close();
+          },
+        });
+      },
+      async deleteTemporaryObject() {},
+    };
+    const textSpy = vi
+      .spyOn(Response.prototype, "text")
+      .mockRejectedValue(new Error("Response.text should not be used for catalogue import"));
+
+    try {
+      await importCurrentKppCatalogue({
+        catalogue,
+        storage,
+        store: createStoreWithStagedKppSource(),
+      });
+    } finally {
+      textSpy.mockRestore();
+    }
+
+    expect(catalogue.list()).toHaveLength(1);
+  });
+
   it("stages a discovered KPP source in temporary storage and records checksum metadata", async () => {
     const store = createInMemoryOperationsRunStore();
     const sourceBody = "id,name\n1,urzad\n";
@@ -28,6 +252,9 @@ describe("operations service", () => {
           body: await new Response(body).text(),
           metadata,
         });
+      },
+      async getTemporaryObject() {
+        return null;
       },
       async deleteTemporaryObject() {},
     };
@@ -113,6 +340,9 @@ describe("operations service", () => {
     const storage: TemporaryKppSourceStorage = {
       async putTemporaryObject() {
         throw new Error("R2 is unavailable");
+      },
+      async getTemporaryObject() {
+        return null;
       },
       async deleteTemporaryObject() {},
     };
@@ -201,6 +431,9 @@ describe("operations service", () => {
 
         await readNextChunk();
       },
+      async getTemporaryObject() {
+        return null;
+      },
       async deleteTemporaryObject() {},
     };
 
@@ -270,6 +503,9 @@ describe("operations service", () => {
     const deletedKeys: string[] = [];
     const storage: TemporaryKppSourceStorage = {
       async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return null;
+      },
       async deleteTemporaryObject(key) {
         deletedKeys.push(key);
       },
@@ -329,6 +565,9 @@ describe("operations service", () => {
     const store = createInMemoryOperationsRunStore();
     const storage: TemporaryKppSourceStorage = {
       async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return null;
+      },
       async deleteTemporaryObject() {
         throw new Error("R2 delete failed");
       },

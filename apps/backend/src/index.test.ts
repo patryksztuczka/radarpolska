@@ -22,6 +22,14 @@ interface TrpcOperationsOverviewResponse {
           readonly failedRuns: number;
           readonly lastCompletedAt: string | null;
         };
+        readonly catalogue: {
+          readonly totalPublicEntities: number;
+          readonly byType: Record<string, number>;
+          readonly byLegalForm: Record<string, number>;
+          readonly byOwnershipForm: Record<string, number>;
+          readonly byFinancingForm: Record<string, number>;
+          readonly byLocation: Record<string, number>;
+        };
         readonly runs: readonly unknown[];
       };
     };
@@ -103,6 +111,14 @@ describe("backend app", () => {
         successfulRuns: 0,
         failedRuns: 0,
         lastCompletedAt: null,
+      },
+      catalogue: {
+        totalPublicEntities: 0,
+        byType: {},
+        byLegalForm: {},
+        byOwnershipForm: {},
+        byFinancingForm: {},
+        byLocation: {},
       },
       runs: [],
     });
@@ -195,6 +211,9 @@ describe("backend app", () => {
         },
         storage: {
           async putTemporaryObject() {},
+          async getTemporaryObject() {
+            return null;
+          },
           async deleteTemporaryObject() {},
         },
       },
@@ -269,6 +288,9 @@ describe("backend app", () => {
         },
         storage: {
           async putTemporaryObject() {},
+          async getTemporaryObject() {
+            return null;
+          },
           async deleteTemporaryObject(key) {
             deletedKeys.push(key);
           },
@@ -323,6 +345,99 @@ describe("backend app", () => {
         retention: {
           deletionStatus: "pending",
         },
+      },
+    });
+  });
+
+  it("imports staged active public KPP rows through tRPC and exposes catalogue counts", async () => {
+    const stagedCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-1;Urząd Miasta Krakowa;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+      "KPP-2;Biblioteka Publiczna;Tak;Tak;Biblioteka;Instytucja kultury;Publiczna;Budżet JST;małopolskie;Kraków;Kraków",
+    ].join("\n");
+    let stagedKey: string | null = null;
+    const app = createApp({
+      operations: {
+        fetch: async (input) => {
+          if (String(input).endsWith("/kpp.csv")) {
+            return new Response(stagedCsv);
+          }
+
+          return Response.json({
+            data: [
+              {
+                id: "2150707",
+                attributes: {
+                  title:
+                    "Dane podmiotów świadczących usługi publiczne z Katalogu Podmiotów Publicznych - czerwiec 2026",
+                  format: "csv",
+                  data_date: "2026-06-26",
+                  download_url: "https://example.test/kpp.csv",
+                  csv_download_url: null,
+                  file_url: "https://example.test/kpp.csv",
+                  csv_file_url: null,
+                },
+              },
+            ],
+            links: {},
+          });
+        },
+        storage: {
+          async putTemporaryObject({ key }) {
+            stagedKey = key;
+          },
+          async getTemporaryObject(key) {
+            return key === stagedKey ? new Response(stagedCsv).body : null;
+          },
+          async deleteTemporaryObject() {},
+        },
+      },
+    });
+
+    await app.request("/trpc/operations.discoverLatestKppSource", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    await app.request("/trpc/operations.stageLatestKppSource", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    const importResponse = await app.request("/trpc/operations.importCurrentKppCatalogue", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    const overviewResponse = await app.request("/trpc/operations.getOverview");
+    const overviewBody = (await overviewResponse.json()) as TrpcOperationsOverviewResponse;
+
+    expect(importResponse.status).toBe(200);
+    expect(overviewBody.result.data.json.catalogue).toMatchObject({
+      totalPublicEntities: 2,
+      byType: {
+        Urząd: 1,
+        Biblioteka: 1,
+      },
+      byLegalForm: {
+        "Jednostka budżetowa": 1,
+        "Instytucja kultury": 1,
+      },
+      byOwnershipForm: {
+        Publiczna: 2,
+      },
+      byFinancingForm: {
+        "Budżet państwa": 1,
+        "Budżet JST": 1,
+      },
+      byLocation: {
+        małopolskie: 2,
       },
     });
   });

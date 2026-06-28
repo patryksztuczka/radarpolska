@@ -7,6 +7,7 @@ import {
   deleteExpiredTemporaryKppStagingObjects,
   discoverLatestKppSource,
   getOperationsOverview,
+  importCurrentKppCatalogue,
   stageLatestKppSource,
 } from "../modules/operations/service";
 import type { TrpcContext } from "./context";
@@ -29,6 +30,9 @@ export const appRouter = trpc.router({
           async putTemporaryObject() {
             throw new Error("KPP staging storage is not configured");
           },
+          async getTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
           async deleteTemporaryObject() {
             throw new Error("KPP staging storage is not configured");
           },
@@ -40,6 +44,26 @@ export const appRouter = trpc.router({
       deleteExpiredTemporaryKppStagingObjects({
         storage: ctx.operations.storage ?? {
           async putTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+          async getTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+          async deleteTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+        },
+        store: ctx.operations.store,
+      }),
+    ),
+    importCurrentKppCatalogue: trpc.procedure.mutation(({ ctx }) =>
+      importCurrentKppCatalogue({
+        catalogue: ctx.operations.catalogue,
+        storage: ctx.operations.storage ?? {
+          async putTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+          async getTemporaryObject() {
             throw new Error("KPP staging storage is not configured");
           },
           async deleteTemporaryObject() {

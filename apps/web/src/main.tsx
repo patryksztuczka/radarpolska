@@ -1,12 +1,51 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
-import { CloudUpload } from "lucide-react";
+import { CloudUpload, Database } from "lucide-react";
 import { StrictMode, useEffectEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 
 import { trpc } from "./lib/trpc";
 import "./styles.css";
+
+function CountList({
+  counts,
+  title,
+}: {
+  readonly counts: Record<string, number> | undefined;
+  readonly title: string;
+}) {
+  const entries = Object.entries(counts ?? {}).reduce<[string, number][]>(
+    (sortedEntries, entry) => {
+      const insertBefore = sortedEntries.findIndex((existingEntry) => entry[1] > existingEntry[1]);
+
+      if (insertBefore === -1) {
+        return [...sortedEntries, entry];
+      }
+
+      return [...sortedEntries.slice(0, insertBefore), entry, ...sortedEntries.slice(insertBefore)];
+    },
+    [],
+  );
+
+  return (
+    <section className="countGroup">
+      <h3>{title}</h3>
+      {entries.length ? (
+        <ul className="countList">
+          {entries.map(([label, value]) => (
+            <li key={label}>
+              <span>{label}</span>
+              <strong>{value}</strong>
+            </li>
+          ))}
+        </ul>
+      ) : (
+        <p className="mutedCopy">No imported rows yet.</p>
+      )}
+    </section>
+  );
+}
 
 function AdminSmokePage() {
   const health = trpc.health.useQuery();
@@ -25,6 +64,14 @@ function AdminSmokePage() {
       await utils.operations.getOverview.invalidate();
     },
   });
+  const importCurrentCatalogue = trpc.operations.importCurrentKppCatalogue.useMutation({
+    onSuccess: async () => {
+      await utils.operations.getOverview.invalidate();
+    },
+    onError: async () => {
+      await utils.operations.getOverview.invalidate();
+    },
+  });
   const latestRun = operations.data?.runs[0];
   const latestStagingRun = operations.data?.runs.find(
     (run) => run.operationKey === "kpp-source-staging",
@@ -35,6 +82,9 @@ function AdminSmokePage() {
   });
   const handleStageLatestSource = useEffectEvent(() => {
     stageLatestSource.mutate();
+  });
+  const handleImportCurrentCatalogue = useEffectEvent(() => {
+    importCurrentCatalogue.mutate();
   });
 
   return (
@@ -92,6 +142,18 @@ function AdminSmokePage() {
             >
               <CloudUpload aria-hidden="true" size={18} />
             </button>
+            <button
+              aria-label="Import current KPP catalogue"
+              className="iconActionButton"
+              disabled={
+                latestStagingRun?.staging?.status !== "staged" || importCurrentCatalogue.isPending
+              }
+              onClick={handleImportCurrentCatalogue}
+              title="Import current KPP catalogue"
+              type="button"
+            >
+              <Database aria-hidden="true" size={18} />
+            </button>
           </div>
 
           <dl className="statsGrid">
@@ -111,7 +173,18 @@ function AdminSmokePage() {
               <dt>Failed</dt>
               <dd>{operations.data?.summary.failedRuns ?? "-"}</dd>
             </div>
+            <div className="statCard statCardWide">
+              <dt>Current public KPP rows</dt>
+              <dd>{operations.data?.catalogue.totalPublicEntities ?? "-"}</dd>
+            </div>
           </dl>
+          <div className="catalogueCounts">
+            <CountList counts={operations.data?.catalogue.byType} title="Type" />
+            <CountList counts={operations.data?.catalogue.byLegalForm} title="Legal form" />
+            <CountList counts={operations.data?.catalogue.byOwnershipForm} title="Ownership" />
+            <CountList counts={operations.data?.catalogue.byFinancingForm} title="Financing" />
+            <CountList counts={operations.data?.catalogue.byLocation} title="Location" />
+          </div>
         </article>
 
         <article className="panel">
@@ -131,6 +204,9 @@ function AdminSmokePage() {
           ) : null}
           {stageLatestSource.error ? (
             <p className="error">{stageLatestSource.error.message}</p>
+          ) : null}
+          {importCurrentCatalogue.error ? (
+            <p className="error">{importCurrentCatalogue.error.message}</p>
           ) : null}
 
           {latestSource ? (
