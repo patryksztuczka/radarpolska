@@ -1,0 +1,37 @@
+apps/backend/src/index.ts
+  s_8c3dc0ee6d9ce7::t_f075fbcb6800b7 10-11,27,51-53,55
+  s_8c3dc0ee6d9ce7::t_eafc272cbc82b4 28,54
+apps/backend/src/trpc/router.ts
+  s_8c3dc0ee6d9ce7::t_bbc74bb24ab10c 19-26,69
+apps/backend/src/modules/operations/fixtures/kpp-representative.csv
+  s_8c3dc0ee6d9ce7::t_0521275c725224 1-6
+apps/backend/src/index.test.ts
+  s_8c3dc0ee6d9ce7::t_e2e7c2ebf203cd 440-442
+apps/backend/src/modules/operations/service.test.ts
+  s_8c3dc0ee6d9ce7::t_246c23d3e4c1cd 1-2,5,9,20-23,73-129,177,212-252,271,292,309-337,376
+  s_8c3dc0ee6d9ce7::t_21b412550227b0 203-207
+apps/backend/src/modules/operations/service.ts
+  s_8c3dc0ee6d9ce7::t_4143a9e82cd595 556
+  s_8c3dc0ee6d9ce7::t_004166940a134b 2-5,113-114,459,469-470,475-555,557-592,594
+  s_8c3dc0ee6d9ce7::t_d58c9d0544b840 129,141,748
+  s_8c3dc0ee6d9ce7::t_2be6f5e1330bec 777
+  s_8c3dc0ee6d9ce7::t_1ab571ee1b8ada 644-647,710,719,1020
+  s_8c3dc0ee6d9ce7::t_fdb5a368281160 593
+  s_8c3dc0ee6d9ce7::t_4c3fd946d1cb25 595
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "440860cbacb60127d8429f536e9f9134527c3f31",
+  "prompts": {},
+  "sessions": {
+    "s_8c3dc0ee6d9ce7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e8c-0c3f-7d93-8b55-1459f46a1096",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    }
+  }
+}
