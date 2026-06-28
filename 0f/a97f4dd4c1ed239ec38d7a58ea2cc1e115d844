@@ -1,0 +1,21 @@
+apps/backend/src/trpc/router.ts
+  s_a729c9076f8032::t_cf5deeb9e1be8c 39-46,48-51
+apps/backend/src/index.test.ts
+  s_a729c9076f8032::t_ae49786ca141f1 242,312,324
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "0fa97f4dd4c1ed239ec38d7a58ea2cc1e115d844",
+  "prompts": {},
+  "sessions": {
+    "s_a729c9076f8032": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e52-d1b2-7af2-8669-aa46ccb10e18",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    }
+  }
+}
