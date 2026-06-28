@@ -1,0 +1,55 @@
+apps/backend/src/modules/operations/service.ts
+  s_8c3dc0ee6d9ce7::t_0d06d7b345d1dd 66-89,98,108-112,120,153-158,197-204,365-370,379,382-383,385,390-391,394-395,400,430,441-442,446-447,449-450,453-454,458-461,463-464,474-476,480,482-486,492,496-527,581-585,594-600,609-610,629-646,648-657
+  s_8c3dc0ee6d9ce7::t_f4a225515450b9 239-248,563-568,586-591,593,611,669-682,916
+  s_8c3dc0ee6d9ce7::t_b8210eaac5a59b 462,465,472-473,477-479,481,487-491,493-495
+  s_8c3dc0ee6d9ce7::t_dfbef561d98ba6 912-915,917-920
+  s_8c3dc0ee6d9ce7::t_c684bafb29ede3 125,137,623,892,901-904,930
+  s_8c3dc0ee6d9ce7::t_ecaa235fdbe21c 455-457,466-471,592,896-898
+  s_8c3dc0ee6d9ce7::t_79480fc04d72c6 448,451-452
+  s_8c3dc0ee6d9ce7::t_5fa31e8f9de9ee 355-364,371-378,380-381,384,386-389,392-393,396-399,401-429,431-440,443-445,647
+  s_8c3dc0ee6d9ce7::t_fa1692c9bd9f0d 658
+apps/backend/drizzle/0002_mute_blue_shield.sql
+  s_8c3dc0ee6d9ce7::t_3c5b44af92b62f 1-15
+apps/backend/src/trpc/router.ts
+  s_8c3dc0ee6d9ce7::t_74a05cd89651ff 10,33-35,49-68
+apps/backend/src/modules/operations/service.test.ts
+  s_8c3dc0ee6d9ce7::t_ba72d4f63faf02 131,256-258,344-346,434-436,506-508,568-570
+  s_8c3dc0ee6d9ce7::t_a2099ce1ffa2e4 5,8,65-130,132-133,139-140,197-198
+  s_8c3dc0ee6d9ce7::t_223ca75e3b2818 199-239
+  s_8c3dc0ee6d9ce7::t_85b29c07d4ec1b 17-63
+  s_8c3dc0ee6d9ce7::t_820e164b581ea4 134-138,141-196
+apps/web/src/styles.css
+  s_8c3dc0ee6d9ce7::t_dc41f9c8dc5a38 52,69-74,200-249,385-392
+apps/web/src/main.tsx
+  s_8c3dc0ee6d9ce7::t_95f6f0f2f565fe 15,182-186
+  s_8c3dc0ee6d9ce7::t_ae2fdc67c8364d 3,11-14,16-17,30-49,67-74,86-88,145-156,176-179,181,187,208-209
+  s_8c3dc0ee6d9ce7::t_dfbef561d98ba6 18-20,22-24,26-29
+  s_8c3dc0ee6d9ce7::t_76a02cd28d61ae 21,25
+  s_8c3dc0ee6d9ce7::t_8a988cb38efd3f 210
+apps/backend/src/db/schema.ts
+  s_8c3dc0ee6d9ce7::t_88261254d299aa 81-101
+apps/backend/src/index.test.ts
+  s_8c3dc0ee6d9ce7::t_8d33ad415047d7 25-32,115-121
+  s_8c3dc0ee6d9ce7::t_41dd31bed4dd6f 122,214-216,291-293,352-442
+  s_8c3dc0ee6d9ce7::t_89b51bcfd0c75e 443-444
+apps/backend/drizzle/meta/0002_snapshot.json
+  s_8c3dc0ee6d9ce7::t_322f5411208eb0 1-233
+apps/backend/drizzle/meta/_journal.json
+  s_8c3dc0ee6d9ce7::t_7ce18cab0712af 18-24
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "f5d9b791b59f74312217656339f4c17667f91619",
+  "prompts": {},
+  "sessions": {
+    "s_8c3dc0ee6d9ce7": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e8c-0c3f-7d93-8b55-1459f46a1096",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    }
+  }
+}
