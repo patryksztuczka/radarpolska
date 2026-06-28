@@ -1,0 +1,43 @@
+apps/backend/src/index.test.ts
+  s_a729c9076f8032::t_aaffa61676bbbb 225-228,303-304
+apps/web/src/main.tsx
+  s_a729c9076f8032::t_6aab8c7d7f737d 197-204,231-233
+apps/backend/src/db/schema.ts
+  s_a729c9076f8032::t_c7892158e32683 47-50
+apps/backend/src/modules/operations/service.ts
+  s_a729c9076f8032::t_38fc6cd7642ef5 295-299,301-309
+  s_a729c9076f8032::t_9c633d926edd6d 19-22,140,265,267-273,277-284,419,438,467,497
+  s_a729c9076f8032::t_4b9c78940645b3 141
+  s_a729c9076f8032::t_28f7dbd43e308d 1-2,291-294,300,310-312,315-316
+  s_8ced6a1797e74e::t_f92ad4ee34d311 285-287
+apps/backend/src/modules/operations/service.test.ts
+  s_a729c9076f8032::t_a1d6599109aca4 78-80,95-98,103-105
+  s_a729c9076f8032::t_cf8ce3fa53cdb7 1,175-176,181-185,187-189,191-193,196,199-260
+  s_a729c9076f8032::t_2fdcaf6d4604fd 177-180
+  s_a729c9076f8032::t_398653c412bed0 186,190,194-195,197-198
+  s_8ced6a1797e74e::t_6b78ea47ce3a6a 261-262
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "314b8697526fa0593ce8255977c90cbf5ee9b7df",
+  "prompts": {},
+  "sessions": {
+    "s_8ced6a1797e74e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e4d-a708-7d21-953f-6766b0170cae",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    },
+    "s_a729c9076f8032": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e52-d1b2-7af2-8669-aa46ccb10e18",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    }
+  }
+}
