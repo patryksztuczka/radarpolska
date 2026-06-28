@@ -11,6 +11,23 @@ interface TrpcHealthResponse {
   };
 }
 
+interface TrpcOperationsOverviewResponse {
+  readonly result: {
+    readonly data: {
+      readonly json: {
+        readonly summary: {
+          readonly totalRuns: number;
+          readonly activeRuns: number;
+          readonly successfulRuns: number;
+          readonly failedRuns: number;
+          readonly lastCompletedAt: string | null;
+        };
+        readonly runs: readonly [];
+      };
+    };
+  };
+}
+
 describe("backend app", () => {
   it("returns a health payload from the HTTP route", async () => {
     const response = await createApp().request("/api/health");
@@ -32,6 +49,23 @@ describe("backend app", () => {
     expect(body.result.data.json).toMatchObject({
       status: "ok",
       service: "radarpolska-backend",
+    });
+  });
+
+  it("serves an empty operations overview before importers exist", async () => {
+    const response = await createApp().request("/trpc/operations.getOverview");
+    const body = (await response.json()) as TrpcOperationsOverviewResponse;
+
+    expect(response.status).toBe(200);
+    expect(body.result.data.json).toEqual({
+      summary: {
+        totalRuns: 0,
+        activeRuns: 0,
+        successfulRuns: 0,
+        failedRuns: 0,
+        lastCompletedAt: null,
+      },
+      runs: [],
     });
   });
 });
