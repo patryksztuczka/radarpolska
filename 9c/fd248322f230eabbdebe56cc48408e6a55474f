@@ -1,0 +1,60 @@
+apps/backend/src/trpc/router.ts
+  s_a729c9076f8032::t_58a316038242f3 24-25,27-31,33-34
+  s_a729c9076f8032::t_46e239466cca16 6-10,26,32
+apps/web/src/styles.css
+  s_a729c9076f8032::t_2a7d4bdb2445e9 140-151,157-161,208-216,221-240,267-271
+  s_8ced6a1797e74e::t_32d4ea67eeb1cb 272
+apps/web/src/main.tsx
+  s_a729c9076f8032::t_7f17b4833d6c43 132-134,223
+  s_a729c9076f8032::t_bd8287ca0ac38d 3,20-27,29-31,36-38,85-93,177-211,221-222,224-226,228-230
+  s_a729c9076f8032::t_59c9a683afafda 94
+apps/backend/drizzle/0001_melted_trauma.sql
+  s_a729c9076f8032::t_516e04188be966 1-2
+apps/backend/src/index.ts
+  s_a729c9076f8032::t_983e780af71d3e 42-45,49-50,52-53
+  s_a729c9076f8032::t_1dc9fabffbad7f 8-12,46-48,51
+apps/backend/src/modules/operations/service.test.ts
+  s_a729c9076f8032::t_7f17b4833d6c43 71,75,90,138,150
+  s_a729c9076f8032::t_c8beeee6f60216 98-137,139-149,151-164
+  s_a729c9076f8032::t_a0a60354b0568b 7-8,15-70,72-74,76-89,91-97
+apps/backend/src/modules/operations/service.ts
+  s_a729c9076f8032::t_0093b7f2d9605a 249-252,375-376,378-466,468
+  s_a729c9076f8032::t_0bc7e13a6a0398 11-20,28,77-85,89,101-106,131,212,234-248,253-264,266-276,298-307,314,361-374,377,467,469-470
+  s_a729c9076f8032::t_7f17b4833d6c43 265,297
+  s_8ced6a1797e74e::t_ceb23e720bc348 277,471
+apps/backend/src/index.test.ts
+  s_a729c9076f8032::t_bc7c548b648ed3 47-65,160-222,224-230
+  s_a729c9076f8032::t_d8c9491c1e4577 231-284,294-303
+  s_a729c9076f8032::t_828b6965d60e10 285-293
+  s_a729c9076f8032::t_7f17b4833d6c43 223
+apps/backend/src/db/schema.ts
+  s_a729c9076f8032::t_8d0e7eff1fcc35 31-50,57-58
+apps/backend/drizzle/meta/0001_snapshot.json
+  s_a729c9076f8032::t_20f6a749607c31 1-138
+apps/backend/drizzle/meta/_journal.json
+  s_a729c9076f8032::t_8d049a2013fd81 11-17
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "9cfd248322f230eabbdebe56cc48408e6a55474f",
+  "prompts": {},
+  "sessions": {
+    "s_8ced6a1797e74e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e4d-a708-7d21-953f-6766b0170cae",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    },
+    "s_a729c9076f8032": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e52-d1b2-7af2-8669-aa46ccb10e18",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    }
+  }
+}
