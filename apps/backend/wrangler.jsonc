@@ -1,0 +1,46 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "radarpolska-backend",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-06-28",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+  },
+  "vars": {
+    "ENVIRONMENT": "development",
+  },
+  "r2_buckets": [
+    {
+      "binding": "KPP_STAGING_BUCKET",
+      "bucket_name": "radarpolska-kpp-staging",
+    },
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "INGESTION_QUEUE",
+        "queue": "radarpolska-ingestion",
+      },
+      {
+        "binding": "KRS_ENRICHMENT_QUEUE",
+        "queue": "radarpolska-krs-enrichment",
+      },
+    ],
+    "consumers": [
+      {
+        "queue": "radarpolska-ingestion",
+      },
+      {
+        "queue": "radarpolska-krs-enrichment",
+      },
+    ],
+  },
+  "hyperdrive": [
+    {
+      "binding": "DB",
+      "id": "00000000000000000000000000000000",
+      "localConnectionString": "postgres://radarpolska:radarpolska@127.0.0.1:5432/radarpolska",
+    },
+  ],
+}
