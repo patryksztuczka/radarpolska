@@ -125,6 +125,23 @@ dd {
   margin-bottom: 20px;
 }
 
+.actionButton {
+  border: 0;
+  border-radius: 999px;
+  padding: 12px 18px;
+  background: linear-gradient(135deg, #21473f 0%, #2f6f61 100%);
+  color: #f4fbf8;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 14px 30px rgb(33 71 63 / 24%);
+}
+
+.actionButton:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
 .operationsGrid {
   display: grid;
   grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
@@ -162,10 +179,23 @@ dd {
   font-weight: 600;
 }
 
+.mutedCopy {
+  margin: 18px 0 0;
+  color: #5d716d;
+}
+
+.sourceGrid {
+  margin-bottom: 20px;
+}
+
+.sourceSpan {
+  grid-column: 1 / -1;
+}
+
 .emptyState {
   display: grid;
   gap: 10px;
-  min-height: 280px;
+  min-height: 220px;
   align-content: center;
   justify-items: start;
   border: 1px dashed #c7d5cf;
