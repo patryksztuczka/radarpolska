@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink } from "@trpc/client";
+import { CloudUpload } from "lucide-react";
 import { StrictMode, useEffectEvent, useState } from "react";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
@@ -16,10 +17,24 @@ function AdminSmokePage() {
       await utils.operations.getOverview.invalidate();
     },
   });
+  const stageLatestSource = trpc.operations.stageLatestKppSource.useMutation({
+    onSuccess: async () => {
+      await utils.operations.getOverview.invalidate();
+    },
+    onError: async () => {
+      await utils.operations.getOverview.invalidate();
+    },
+  });
   const latestRun = operations.data?.runs[0];
+  const latestStagingRun = operations.data?.runs.find(
+    (run) => run.operationKey === "kpp-source-staging",
+  );
   const latestSource = latestRun?.source;
   const handleDiscoverLatestSource = useEffectEvent(() => {
     discoverLatestSource.mutate();
+  });
+  const handleStageLatestSource = useEffectEvent(() => {
+    stageLatestSource.mutate();
   });
 
   return (
@@ -67,6 +82,16 @@ function AdminSmokePage() {
             >
               {discoverLatestSource.isPending ? "Discovering..." : "Discover latest KPP source"}
             </button>
+            <button
+              aria-label="Stage latest KPP source"
+              className="iconActionButton"
+              disabled={!latestSource || stageLatestSource.isPending}
+              onClick={handleStageLatestSource}
+              title="Stage latest KPP source"
+              type="button"
+            >
+              <CloudUpload aria-hidden="true" size={18} />
+            </button>
           </div>
 
           <dl className="statsGrid">
@@ -103,6 +128,9 @@ function AdminSmokePage() {
           {operations.error ? <p className="error">{operations.error.message}</p> : null}
           {discoverLatestSource.error ? (
             <p className="error">{discoverLatestSource.error.message}</p>
+          ) : null}
+          {stageLatestSource.error ? (
+            <p className="error">{stageLatestSource.error.message}</p>
           ) : null}
 
           {latestSource ? (
@@ -146,6 +174,49 @@ function AdminSmokePage() {
             </div>
           )}
 
+          {latestStagingRun?.staging ? (
+            <dl className="stagingGrid">
+              <div>
+                <dt>Staging status</dt>
+                <dd>
+                  <span
+                    className={
+                      latestStagingRun.staging.status === "staged"
+                        ? "stageBadge stageBadgeOk"
+                        : "stageBadge stageBadgeFailed"
+                    }
+                  >
+                    {latestStagingRun.staging.status}
+                  </span>
+                </dd>
+              </div>
+              <div>
+                <dt>Retention</dt>
+                <dd>{latestStagingRun.staging.retention.status}</dd>
+              </div>
+              <div>
+                <dt>Deletion status</dt>
+                <dd>{latestStagingRun.staging.retention.deletionStatus}</dd>
+              </div>
+              <div>
+                <dt>Delete after</dt>
+                <dd>{latestStagingRun.staging.retention.deleteAfter}</dd>
+              </div>
+              <div className="sourceSpan">
+                <dt>R2 key</dt>
+                <dd>{latestStagingRun.staging.r2Key ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>Bytes</dt>
+                <dd>{latestStagingRun.staging.byteSize ?? "-"}</dd>
+              </div>
+              <div>
+                <dt>Checksum</dt>
+                <dd>{latestStagingRun.staging.checksumSha256 ?? "-"}</dd>
+              </div>
+            </dl>
+          ) : null}
+
           {operations.data?.runs.length ? (
             <ul className="runList">
               {operations.data.runs.map((run) => (
@@ -155,8 +226,18 @@ function AdminSmokePage() {
                     <p className="runMeta">
                       {run.kind} · {run.operationKey} · {run.status}
                     </p>
+                    {run.staging ? (
+                      <p className="runMeta">
+                        staging {run.staging.status} · deletion{" "}
+                        {run.staging.retention.deletionStatus} · delete after{" "}
+                        {run.staging.retention.deleteAfter}
+                      </p>
+                    ) : null}
+                    {run.error ? <p className="runError">{run.error.message}</p> : null}
                   </div>
-                  <span className="runCount">{run.counters.processed}</span>
+                  <span className="runCount">
+                    {run.staging?.byteSize ?? run.counters.processed}
+                  </span>
                 </li>
               ))}
             </ul>

@@ -28,12 +28,38 @@ export interface RunErrorShape {
   readonly details: Record<string, string | number | boolean | null> | null;
 }
 
+export interface RunSourceShape {
+  readonly datasetId: string;
+  readonly datasetTitle: string;
+  readonly resourceId: string;
+  readonly resourceTitle: string;
+  readonly resourceDataDate: string;
+  readonly resourceDownloadUrl: string;
+  readonly resourceFormat: string;
+}
+
+export interface RunStagingShape {
+  readonly status: "staged" | "failed";
+  readonly r2Key: string | null;
+  readonly byteSize: number | null;
+  readonly checksumSha256: string | null;
+  readonly retention: {
+    readonly deleteAfter: string;
+    readonly deleteAfterDays: number;
+    readonly deletionStatus: "pending" | "deleted" | "failed";
+    readonly lifecycle: "delete-after-7-days";
+    readonly status: "temporary";
+  };
+}
+
 export const operationRuns = pgTable("operation_runs", {
   id: uuid("id").defaultRandom().primaryKey(),
   kind: text("kind", { enum: runKinds }).notNull(),
   operationKey: text("operation_key").notNull(),
   sourceLabel: text("source_label").notNull(),
   sourceUrl: text("source_url"),
+  source: jsonb("source").$type<RunSourceShape | null>().default(null),
+  staging: jsonb("staging").$type<RunStagingShape | null>().default(null),
   trigger: text("trigger", { enum: runTriggers }).notNull().default("system"),
   status: text("status", { enum: runStatuses }).notNull().default("pending"),
   counters: jsonb("counters").$type<RunCounters>().notNull().default({

@@ -1,0 +1,138 @@
+{
+  "id": "dbb5a1dc-a086-44fd-8013-d6f5632a66a4",
+  "prevId": "caad68be-00f8-4458-bb6f-56fef9e7be7c",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.operation_runs": {
+      "name": "operation_runs",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "operation_key": {
+          "name": "operation_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_label": {
+          "name": "source_label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "source_url": {
+          "name": "source_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source": {
+          "name": "source",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'null'::jsonb"
+        },
+        "staging": {
+          "name": "staging",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'null'::jsonb"
+        },
+        "trigger": {
+          "name": "trigger",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'system'"
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'pending'"
+        },
+        "counters": {
+          "name": "counters",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{\"discovered\":0,\"queued\":0,\"processed\":0,\"created\":0,\"updated\":0,\"skipped\":0,\"failed\":0}'::jsonb"
+        },
+        "error": {
+          "name": "error",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'null'::jsonb"
+        },
+        "queued_at": {
+          "name": "queued_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "finished_at": {
+          "name": "finished_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "views": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

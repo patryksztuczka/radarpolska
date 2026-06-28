@@ -5,7 +5,11 @@ import { Effect } from "effect";
 
 import type { AppBindings } from "./env";
 import { getHealth } from "./modules/health/service";
-import { createOperationsServices, type OperationsServices } from "./modules/operations/service";
+import {
+  createOperationsServices,
+  createR2TemporaryKppSourceStorage,
+  type OperationsServices,
+} from "./modules/operations/service";
 import { createTrpcContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
 
@@ -35,7 +39,18 @@ export function createApp(options?: CreateAppOptions) {
     trpcServer({
       router: appRouter,
       endpoint: "/trpc",
-      createContext: (_opts, c) => createTrpcContext(c.env, operations),
+      createContext: (_opts, c) => {
+        const env = c.env ?? {};
+
+        return createTrpcContext(env, {
+          ...operations,
+          storage:
+            operations.storage ??
+            (env.KPP_STAGING_BUCKET
+              ? createR2TemporaryKppSourceStorage(env.KPP_STAGING_BUCKET)
+              : null),
+        });
+      },
     }),
   );
 
