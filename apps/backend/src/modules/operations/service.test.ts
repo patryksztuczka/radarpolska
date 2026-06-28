@@ -69,12 +69,36 @@ function createStoreWithStagedKppSource() {
   return store;
 }
 
+function createMutableKppStorage(initialCsv: string) {
+  let stagedCsv = initialCsv;
+
+  return {
+    storage: {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new Response(stagedCsv).body;
+      },
+      async deleteTemporaryObject() {},
+    } satisfies TemporaryKppSourceStorage,
+    stage(nextCsv: string) {
+      stagedCsv = nextCsv;
+    },
+  };
+}
+
 describe("operations service", () => {
   it("persists imported KPP rows through the current catalogue table store", async () => {
+    const deletedTables: unknown[] = [];
     const insertedTables: unknown[] = [];
     const selectedTables: unknown[] = [];
-    const storedRows: unknown[] = [];
+    let storedRows: unknown[] = [];
     const catalogue = createDrizzlePublicEntityCatalogueStore({
+      delete(table) {
+        deletedTables.push(table);
+        storedRows = [];
+
+        return Promise.resolve();
+      },
       insert(table) {
         insertedTables.push(table);
 
@@ -123,6 +147,7 @@ describe("operations service", () => {
     });
 
     await expect(catalogue.list()).resolves.toHaveLength(2);
+    expect(deletedTables).toEqual([currentPublicEntityCatalogue]);
     expect(insertedTables).toEqual([currentPublicEntityCatalogue, currentPublicEntityCatalogue]);
     expect(selectedTables).toEqual([currentPublicEntityCatalogue]);
   });
@@ -246,6 +271,90 @@ describe("operations service", () => {
           Powiat: " Kraków ",
           Gmina: " Kraków ",
         },
+      }),
+    ]);
+  });
+
+  it("removes a previously current KPP row when it becomes inactive or private", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const activeCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-STALE;Aktualny urząd;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+    ].join("\n");
+    const inactiveCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-STALE;Nieaktualny urząd;Nie;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+    ].join("\n");
+    const privateCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-STALE;Prywatny urząd;Tak;Nie;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+    ].join("\n");
+    const mutableStorage = createMutableKppStorage(activeCsv);
+    const store = createStoreWithStagedKppSource();
+
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage: mutableStorage.storage,
+      store,
+    });
+    await expect(catalogue.list()).resolves.toHaveLength(1);
+
+    mutableStorage.stage(inactiveCsv);
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage: mutableStorage.storage,
+      store,
+    });
+    await expect(catalogue.list()).resolves.toEqual([]);
+
+    mutableStorage.stage(activeCsv);
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage: mutableStorage.storage,
+      store,
+    });
+    await expect(catalogue.list()).resolves.toHaveLength(1);
+
+    mutableStorage.stage(privateCsv);
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage: mutableStorage.storage,
+      store,
+    });
+    await expect(catalogue.list()).resolves.toEqual([]);
+  });
+
+  it("removes a previously current KPP row when it is absent from the latest dataset", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const firstCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-STALE;Stary urząd;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+      "KPP-CURRENT;Nowy urząd;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;mazowieckie;Warszawa;Warszawa",
+    ].join("\n");
+    const secondCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-CURRENT;Nowy urząd;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;mazowieckie;Warszawa;Warszawa",
+    ].join("\n");
+    const mutableStorage = createMutableKppStorage(firstCsv);
+    const store = createStoreWithStagedKppSource();
+
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage: mutableStorage.storage,
+      store,
+    });
+    await expect(catalogue.list()).resolves.toHaveLength(2);
+
+    mutableStorage.stage(secondCsv);
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage: mutableStorage.storage,
+      store,
+    });
+
+    await expect(catalogue.list()).resolves.toEqual([
+      expect.objectContaining({
+        sourceId: "KPP-CURRENT",
       }),
     ]);
   });

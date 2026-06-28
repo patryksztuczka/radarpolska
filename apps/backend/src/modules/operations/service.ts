@@ -111,6 +111,9 @@ interface OperationsRunStore {
 
 interface PublicEntityCatalogueStore {
   list(): Promise<readonly PublicEntityCatalogueEntry[]>;
+  replaceAll(
+    entries: readonly PublicEntityCatalogueEntry[],
+  ): Promise<readonly PublicEntityCatalogueEntry[]>;
   upsert(entry: PublicEntityCatalogueEntry): Promise<PublicEntityCatalogueEntry>;
 }
 
@@ -541,6 +544,7 @@ function createDrizzleClient(connectionString: string) {
 }
 
 type DrizzleCatalogueDatabase = {
+  delete(table: typeof currentPublicEntityCatalogue): Promise<unknown> | unknown;
   insert(table: typeof currentPublicEntityCatalogue): {
     values(value: ReturnType<typeof createCatalogueInsertValue>): {
       onConflictDoUpdate(input: {
@@ -569,6 +573,11 @@ export function createDrizzlePublicEntityCatalogueStore(
         .orderBy(currentPublicEntityCatalogue.sourceId);
 
       return rows.map(mapReturnedCatalogueRow);
+    },
+    async replaceAll(entries) {
+      await db.delete(currentPublicEntityCatalogue);
+
+      return Promise.all(entries.map((entry) => this.upsert(entry)));
     },
     async upsert(entry) {
       const [row] = await db
@@ -716,6 +725,15 @@ export function createInMemoryPublicEntityCatalogueStore(): PublicEntityCatalogu
         [],
       );
     },
+    async replaceAll(nextEntries) {
+      entries.clear();
+
+      for (const entry of nextEntries) {
+        entries.set(entry.sourceId, entry);
+      }
+
+      return this.list();
+    },
     async upsert(entry) {
       entries.set(entry.sourceId, entry);
       return entry;
@@ -774,7 +792,7 @@ export async function importCurrentKppCatalogue({
     .map(toPublicEntityCatalogueEntry)
     .filter((entry): entry is PublicEntityCatalogueEntry => entry !== null);
 
-  await Promise.all(entries.map((entry) => catalogue.upsert(entry)));
+  await catalogue.replaceAll(entries);
 
   return entries;
 }
