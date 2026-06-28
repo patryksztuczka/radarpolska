@@ -222,6 +222,10 @@ describe("backend app", () => {
         byteSize: 16,
         checksumSha256: "adfb7dc69d27b66f7d1bfc9679af62da34085af9c8113b7c990355dc74b2b807",
         retention: {
+          deleteAfter: expect.any(String),
+          deleteAfterDays: 7,
+          deletionStatus: "pending",
+          lifecycle: "delete-after-7-days",
           status: "temporary",
         },
       },
@@ -296,6 +300,8 @@ describe("backend app", () => {
       staging: {
         status: "failed",
         retention: {
+          deleteAfter: expect.any(String),
+          deletionStatus: "pending",
           status: "temporary",
         },
       },

@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 export interface KppSourceMetadata {
   readonly datasetId: string;
   readonly datasetTitle: string;
@@ -14,6 +16,10 @@ export interface KppSourceStagingMetadata {
   readonly byteSize: number | null;
   readonly checksumSha256: string | null;
   readonly retention: {
+    readonly deleteAfter: string;
+    readonly deleteAfterDays: number;
+    readonly deletionStatus: "pending" | "deleted" | "failed";
+    readonly lifecycle: "delete-after-7-days";
     readonly status: "temporary";
   };
 }
@@ -131,6 +137,8 @@ const kppDiscoveryOperationKey = "kpp-source-discovery";
 const kppStagingOperationKey = "kpp-source-staging";
 const kppResourcesUrl =
   "https://api.dane.gov.pl/datasets/3520,dane-podmiotow-swiadczacych-usugi-publiczne-z-kat/resources?page=1";
+const temporaryRetentionDays = 7;
+const temporaryRetentionLifecycle = "delete-after-7-days" as const;
 
 const emptyOverview: OperationsOverview = {
   summary: {
@@ -254,24 +262,58 @@ function createStagingObjectKey(source: KppSourceMetadata, runId: string) {
   return `tmp/kpp/${source.resourceId}/${runId}.csv`;
 }
 
-function createTemporaryStagingMetadata(source: KppSourceMetadata) {
+function createTemporaryRetention(stagedAt: string) {
   return {
+    deleteAfter: new Date(
+      Date.parse(stagedAt) + temporaryRetentionDays * 24 * 60 * 60 * 1000,
+    ).toISOString(),
+    deleteAfterDays: temporaryRetentionDays,
+    deletionStatus: "pending" as const,
+    lifecycle: temporaryRetentionLifecycle,
+    status: "temporary" as const,
+  };
+}
+
+function createTemporaryStagingMetadata(
+  source: KppSourceMetadata,
+  retention: KppSourceStagingMetadata["retention"],
+) {
+  return {
+    "radarpolska.retention.deleteAfter": retention.deleteAfter,
+    "radarpolska.retention.deletionStatus": retention.deletionStatus,
+    "radarpolska.retention.lifecycle": retention.lifecycle,
     "radarpolska.retention.status": "temporary",
     "radarpolska.source.resourceId": source.resourceId,
   };
 }
 
-function toHex(buffer: ArrayBuffer) {
-  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
-}
-
 async function checksumStream(body: ReadableStream<Uint8Array>) {
-  const bytes = await new Response(body).arrayBuffer();
-  const checksum = await crypto.subtle.digest("SHA-256", bytes);
+  const reader = body.getReader();
+  const hash = createHash("sha256");
+  let byteSize = 0;
+
+  async function readNextChunk(): Promise<void> {
+    const chunk = await reader.read();
+
+    if (chunk.done) {
+      return;
+    }
+
+    byteSize += chunk.value.byteLength;
+    hash.update(chunk.value);
+
+    return readNextChunk();
+  }
+
+  try {
+    await readNextChunk();
+  } finally {
+    reader.releaseLock();
+  }
 
   return {
-    byteSize: bytes.byteLength,
-    checksumSha256: toHex(checksum),
+    byteSize,
+    checksumSha256: hash.digest("hex"),
   };
 }
 
@@ -374,6 +416,7 @@ export async function stageLatestKppSource({
   const startedAt = new Date().toISOString();
   const baseRun = createStagingRunBase(source, runId);
   const key = createStagingObjectKey(source, runId);
+  const retention = createTemporaryRetention(startedAt);
 
   try {
     const response = await fetcher(source.resourceDownloadUrl);
@@ -392,7 +435,7 @@ export async function stageLatestKppSource({
       storage.putTemporaryObject({
         key,
         body: storageBody,
-        metadata: createTemporaryStagingMetadata(source),
+        metadata: createTemporaryStagingMetadata(source, retention),
         contentType: response.headers.get("content-type"),
       }),
     ]);
@@ -421,9 +464,7 @@ export async function stageLatestKppSource({
         r2Key: key,
         byteSize,
         checksumSha256,
-        retention: {
-          status: "temporary",
-        },
+        retention,
       },
       error: null,
     });
@@ -453,9 +494,7 @@ export async function stageLatestKppSource({
         r2Key: key,
         byteSize: null,
         checksumSha256: null,
-        retention: {
-          status: "temporary",
-        },
+        retention,
       },
       error: {
         code: "KPP_STAGING_FAILED",

@@ -194,6 +194,14 @@ function AdminSmokePage() {
                 <dt>Retention</dt>
                 <dd>{latestStagingRun.staging.retention.status}</dd>
               </div>
+              <div>
+                <dt>Deletion status</dt>
+                <dd>{latestStagingRun.staging.retention.deletionStatus}</dd>
+              </div>
+              <div>
+                <dt>Delete after</dt>
+                <dd>{latestStagingRun.staging.retention.deleteAfter}</dd>
+              </div>
               <div className="sourceSpan">
                 <dt>R2 key</dt>
                 <dd>{latestStagingRun.staging.r2Key ?? "-"}</dd>
@@ -220,7 +228,9 @@ function AdminSmokePage() {
                     </p>
                     {run.staging ? (
                       <p className="runMeta">
-                        staging {run.staging.status} · retention {run.staging.retention.status}
+                        staging {run.staging.status} · deletion{" "}
+                        {run.staging.retention.deletionStatus} · delete after{" "}
+                        {run.staging.retention.deleteAfter}
                       </p>
                     ) : null}
                     {run.error ? <p className="runError">{run.error.message}</p> : null}

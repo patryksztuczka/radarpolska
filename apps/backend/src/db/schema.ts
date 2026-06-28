@@ -44,6 +44,10 @@ export interface RunStagingShape {
   readonly byteSize: number | null;
   readonly checksumSha256: string | null;
   readonly retention: {
+    readonly deleteAfter: string;
+    readonly deleteAfterDays: number;
+    readonly deletionStatus: "pending" | "deleted" | "failed";
+    readonly lifecycle: "delete-after-7-days";
     readonly status: "temporary";
   };
 }
