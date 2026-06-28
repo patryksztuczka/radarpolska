@@ -5,13 +5,19 @@ import { Effect } from "effect";
 
 import type { AppBindings } from "./env";
 import { getHealth } from "./modules/health/service";
+import { createOperationsServices, type OperationsServices } from "./modules/operations/service";
 import { createTrpcContext } from "./trpc/context";
 import { appRouter } from "./trpc/router";
 
 type AppEnv = { Bindings: AppBindings };
 
-export function createApp() {
+interface CreateAppOptions {
+  readonly operations?: Partial<OperationsServices>;
+}
+
+export function createApp(options?: CreateAppOptions) {
   const app = new Hono<AppEnv>();
+  const operations = createOperationsServices(options?.operations);
 
   app.use(
     "/trpc/*",
@@ -29,7 +35,7 @@ export function createApp() {
     trpcServer({
       router: appRouter,
       endpoint: "/trpc",
-      createContext: (_opts, c) => createTrpcContext(c.env),
+      createContext: (_opts, c) => createTrpcContext(c.env, operations),
     }),
   );
 
