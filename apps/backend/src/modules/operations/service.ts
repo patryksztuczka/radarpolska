@@ -87,6 +87,7 @@ export interface TemporaryKppSourceStorage {
     readonly metadata: Record<string, string>;
     readonly contentType: string | null;
   }): Promise<void>;
+  deleteTemporaryObject(key: string): Promise<void>;
 }
 
 export interface OperationsServices {
@@ -106,6 +107,12 @@ interface GetOperationsOverviewOptions {
 
 interface StageLatestKppSourceOptions {
   readonly fetch: typeof fetch;
+  readonly storage: TemporaryKppSourceStorage;
+  readonly store: OperationsRunStore;
+}
+
+interface DeleteExpiredTemporaryKppStagingObjectsOptions {
+  readonly now?: Date;
   readonly storage: TemporaryKppSourceStorage;
   readonly store: OperationsRunStore;
 }
@@ -280,6 +287,7 @@ function createTemporaryStagingMetadata(
 ) {
   return {
     "radarpolska.retention.deleteAfter": retention.deleteAfter,
+    "radarpolska.retention.deleteAfterDays": String(retention.deleteAfterDays),
     "radarpolska.retention.deletionStatus": retention.deletionStatus,
     "radarpolska.retention.lifecycle": retention.lifecycle,
     "radarpolska.retention.status": "temporary",
@@ -343,6 +351,9 @@ export function createR2TemporaryKppSourceStorage(bucket: R2Bucket): TemporaryKp
         customMetadata: metadata,
         httpMetadata: contentType ? { contentType } : undefined,
       });
+    },
+    async deleteTemporaryObject(key) {
+      await bucket.delete(key);
     },
   };
 }
@@ -506,6 +517,77 @@ export async function stageLatestKppSource({
 
     throw error;
   }
+}
+
+export async function deleteExpiredTemporaryKppStagingObjects({
+  now = new Date(),
+  storage,
+  store,
+}: DeleteExpiredTemporaryKppStagingObjectsOptions) {
+  const expiredRuns = store.list().filter((run) => {
+    if (!run.staging?.r2Key) {
+      return false;
+    }
+
+    if (run.staging.retention.deletionStatus !== "pending") {
+      return false;
+    }
+
+    return Date.parse(run.staging.retention.deleteAfter) <= now.getTime();
+  });
+
+  async function deleteNext(index: number): Promise<readonly OperationsRun[]> {
+    const run = expiredRuns[index];
+
+    if (!run?.staging?.r2Key) {
+      return [];
+    }
+
+    try {
+      await storage.deleteTemporaryObject(run.staging.r2Key);
+
+      const updatedRun = store.save({
+        ...run,
+        staging: {
+          ...run.staging,
+          retention: {
+            ...run.staging.retention,
+            deletionStatus: "deleted",
+          },
+        },
+      });
+
+      return [updatedRun, ...(await deleteNext(index + 1))];
+    } catch (error) {
+      store.save({
+        ...run,
+        status: "partially_failed",
+        counters: {
+          ...run.counters,
+          failed: run.counters.failed + 1,
+        },
+        staging: {
+          ...run.staging,
+          retention: {
+            ...run.staging.retention,
+            deletionStatus: "failed",
+          },
+        },
+        error: {
+          code: "KPP_STAGING_RETENTION_DELETE_FAILED",
+          message: getErrorMessage(error),
+          retryable: true,
+          details: {
+            r2Key: run.staging.r2Key,
+          },
+        },
+      });
+
+      throw error;
+    }
+  }
+
+  return deleteNext(0);
 }
 
 export async function getOperationsOverview({

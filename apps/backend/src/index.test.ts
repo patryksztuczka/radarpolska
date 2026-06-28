@@ -55,6 +55,10 @@ interface TrpcStageSourceResponse {
           readonly byteSize: number | null;
           readonly checksumSha256: string | null;
           readonly retention: {
+            readonly deleteAfter: string;
+            readonly deleteAfterDays: number;
+            readonly deletionStatus: string;
+            readonly lifecycle: string;
             readonly status: string;
           };
         } | null;
@@ -191,6 +195,7 @@ describe("backend app", () => {
         },
         storage: {
           async putTemporaryObject() {},
+          async deleteTemporaryObject() {},
         },
       },
     });
@@ -232,6 +237,94 @@ describe("backend app", () => {
     });
     expect(overviewBody.result.data.json.summary.totalRuns).toBe(2);
     expect(overviewBody.result.data.json.runs).toHaveLength(2);
+  });
+
+  it("deletes expired KPP staging objects through tRPC and exposes the retention transition", async () => {
+    const deletedKeys: string[] = [];
+    const app = createApp({
+      operations: {
+        fetch: async (input) => {
+          if (String(input).endsWith("/kpp.csv")) {
+            return new Response("id,name\n1,urzad\n");
+          }
+
+          return Response.json({
+            data: [
+              {
+                id: "2150707",
+                attributes: {
+                  title:
+                    "Dane podmiotów świadczących usługi publiczne z Katalogu Podmiotów Publicznych - czerwiec 2026",
+                  format: "csv",
+                  data_date: "2026-06-26",
+                  download_url: "https://example.test/kpp.csv",
+                  csv_download_url: null,
+                  file_url: "https://example.test/kpp.csv",
+                  csv_file_url: null,
+                },
+              },
+            ],
+            links: {},
+          });
+        },
+        storage: {
+          async putTemporaryObject() {},
+          async deleteTemporaryObject(key) {
+            deletedKeys.push(key);
+          },
+        },
+      },
+    });
+
+    await app.request("/trpc/operations.discoverLatestKppSource", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    const stageResponse = await app.request("/trpc/operations.stageLatestKppSource", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: "{}",
+    });
+    const stageBody = (await stageResponse.json()) as TrpcStageSourceResponse;
+    const cleanupResponse = await app.request(
+      "/trpc/operations.deleteExpiredTemporaryKppStagingObjects",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          json: {
+            now: stageBody.result.data.json.staging?.retention.deleteAfter,
+          },
+        }),
+      },
+    );
+    const overviewResponse = await app.request("/trpc/operations.getOverview");
+    const overviewBody = (await overviewResponse.json()) as TrpcOperationsOverviewResponse;
+
+    expect(cleanupResponse.status).toBe(200);
+    expect(deletedKeys).toEqual([stageBody.result.data.json.staging?.r2Key]);
+    expect(
+      overviewBody.result.data.json.runs.find(
+        (run) =>
+          typeof run === "object" &&
+          run !== null &&
+          "operationKey" in run &&
+          run.operationKey === "kpp-source-staging",
+      ),
+    ).toMatchObject({
+      staging: {
+        retention: {
+          deletionStatus: "deleted",
+        },
+      },
+    });
   });
 
   it("records failed KPP staging attempts through tRPC", async () => {

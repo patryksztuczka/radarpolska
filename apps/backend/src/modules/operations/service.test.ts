@@ -4,6 +4,7 @@ import {
   createInMemoryOperationsRunStore,
   discoverLatestKppSource,
   getOperationsOverview,
+  deleteExpiredTemporaryKppStagingObjects,
   stageLatestKppSource,
   type TemporaryKppSourceStorage,
 } from "./service";
@@ -28,6 +29,7 @@ describe("operations service", () => {
           metadata,
         });
       },
+      async deleteTemporaryObject() {},
     };
 
     await discoverLatestKppSource({
@@ -76,6 +78,7 @@ describe("operations service", () => {
         body: sourceBody,
         metadata: {
           "radarpolska.retention.deleteAfter": expect.any(String),
+          "radarpolska.retention.deleteAfterDays": "7",
           "radarpolska.retention.deletionStatus": "pending",
           "radarpolska.retention.lifecycle": "delete-after-7-days",
           "radarpolska.retention.status": "temporary",
@@ -111,6 +114,7 @@ describe("operations service", () => {
       async putTemporaryObject() {
         throw new Error("R2 is unavailable");
       },
+      async deleteTemporaryObject() {},
     };
 
     await discoverLatestKppSource({
@@ -197,6 +201,7 @@ describe("operations service", () => {
 
         await readNextChunk();
       },
+      async deleteTemporaryObject() {},
     };
 
     await discoverLatestKppSource({
@@ -256,6 +261,132 @@ describe("operations service", () => {
       staging: {
         byteSize: 16,
         checksumSha256: "adfb7dc69d27b66f7d1bfc9679af62da34085af9c8113b7c990355dc74b2b807",
+      },
+    });
+  });
+
+  it("deletes expired temporary KPP staging objects and marks retention as deleted", async () => {
+    const store = createInMemoryOperationsRunStore();
+    const deletedKeys: string[] = [];
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async deleteTemporaryObject(key) {
+        deletedKeys.push(key);
+      },
+    };
+
+    await discoverLatestKppSource({
+      fetch: async () =>
+        Response.json({
+          data: [
+            {
+              id: "2150707",
+              attributes: {
+                title:
+                  "Dane podmiotów świadczących usługi publiczne z Katalogu Podmiotów Publicznych - czerwiec 2026",
+                format: "csv",
+                data_date: "2026-06-26",
+                download_url: "https://example.test/kpp.csv",
+                csv_download_url: null,
+                file_url: "https://example.test/kpp.csv",
+                csv_file_url: null,
+              },
+            },
+          ],
+          links: {},
+        }),
+      store,
+    });
+
+    const stagedRun = await stageLatestKppSource({
+      fetch: async () => new Response("id,name\n1,urzad\n"),
+      storage,
+      store,
+    });
+
+    await deleteExpiredTemporaryKppStagingObjects({
+      now: new Date(stagedRun.staging!.retention.deleteAfter),
+      storage,
+      store,
+    });
+
+    const overview = await getOperationsOverview({ store });
+    const stagingRun = overview.runs.find((run) => run.id === stagedRun.id);
+
+    expect(deletedKeys).toEqual([stagedRun.staging?.r2Key]);
+    expect(stagingRun).toMatchObject({
+      id: stagedRun.id,
+      status: "completed",
+      staging: {
+        retention: {
+          deletionStatus: "deleted",
+        },
+      },
+    });
+  });
+
+  it("marks expired temporary KPP staging deletion failures on the run", async () => {
+    const store = createInMemoryOperationsRunStore();
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async deleteTemporaryObject() {
+        throw new Error("R2 delete failed");
+      },
+    };
+
+    await discoverLatestKppSource({
+      fetch: async () =>
+        Response.json({
+          data: [
+            {
+              id: "2150707",
+              attributes: {
+                title:
+                  "Dane podmiotów świadczących usługi publiczne z Katalogu Podmiotów Publicznych - czerwiec 2026",
+                format: "csv",
+                data_date: "2026-06-26",
+                download_url: "https://example.test/kpp.csv",
+                csv_download_url: null,
+                file_url: "https://example.test/kpp.csv",
+                csv_file_url: null,
+              },
+            },
+          ],
+          links: {},
+        }),
+      store,
+    });
+
+    const stagedRun = await stageLatestKppSource({
+      fetch: async () => new Response("id,name\n1,urzad\n"),
+      storage,
+      store,
+    });
+
+    await expect(
+      deleteExpiredTemporaryKppStagingObjects({
+        now: new Date(stagedRun.staging!.retention.deleteAfter),
+        storage,
+        store,
+      }),
+    ).rejects.toThrow("R2 delete failed");
+
+    const overview = await getOperationsOverview({ store });
+    const stagingRun = overview.runs.find((run) => run.id === stagedRun.id);
+
+    expect(overview.summary.failedRuns).toBe(1);
+    expect(stagingRun).toMatchObject({
+      id: stagedRun.id,
+      status: "partially_failed",
+      staging: {
+        retention: {
+          deletionStatus: "failed",
+        },
+      },
+      error: {
+        code: "KPP_STAGING_RETENTION_DELETE_FAILED",
+        message: "R2 delete failed",
+        retryable: true,
       },
     });
   });
