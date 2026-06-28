@@ -86,6 +86,52 @@ function createMutableKppStorage(initialCsv: string) {
   };
 }
 
+function createCompletedStagingRun(input: {
+  readonly id: string;
+  readonly queuedAt: string;
+  readonly r2Key: string;
+}) {
+  return {
+    id: input.id,
+    kind: "import" as const,
+    operationKey: "kpp-source-staging",
+    sourceLabel: "KPP fixture",
+    sourceUrl: "https://example.test/kpp.csv",
+    source: null,
+    staging: {
+      status: "staged" as const,
+      r2Key: input.r2Key,
+      byteSize: 1,
+      checksumSha256: "fixture",
+      retention: {
+        deleteAfter: input.queuedAt,
+        deleteAfterDays: 7,
+        deletionStatus: "pending" as const,
+        lifecycle: "delete-after-7-days" as const,
+        status: "temporary" as const,
+      },
+    },
+    trigger: "manual" as const,
+    status: "completed" as const,
+    counters: {
+      discovered: 0,
+      queued: 0,
+      processed: 1,
+      created: 0,
+      updated: 0,
+      skipped: 0,
+      failed: 0,
+    },
+    timing: {
+      queuedAt: input.queuedAt,
+      startedAt: input.queuedAt,
+      finishedAt: input.queuedAt,
+      durationMs: 0,
+    },
+    error: null,
+  };
+}
+
 describe("operations service", () => {
   it("persists imported KPP rows through the current catalogue table store", async () => {
     const deletedTables: unknown[] = [];
@@ -355,6 +401,57 @@ describe("operations service", () => {
     await expect(catalogue.list()).resolves.toEqual([
       expect.objectContaining({
         sourceId: "KPP-CURRENT",
+      }),
+    ]);
+  });
+
+  it("imports from the latest successful KPP staging run when multiple staged keys exist", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const store = createInMemoryOperationsRunStore();
+    const oldCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-OLD;Stary urząd;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków",
+    ].join("\n");
+    const newCsv = [
+      "KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      "KPP-NEW;Nowy urząd;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;mazowieckie;Warszawa;Warszawa",
+    ].join("\n");
+    const bodiesByKey = new Map([
+      ["tmp/kpp/old.csv", oldCsv],
+      ["tmp/kpp/new.csv", newCsv],
+    ]);
+    const requestedKeys: string[] = [];
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject(key) {
+        requestedKeys.push(key);
+
+        return new Response(bodiesByKey.get(key) ?? "").body;
+      },
+      async deleteTemporaryObject() {},
+    };
+
+    store.save(
+      createCompletedStagingRun({
+        id: "00000000-0000-4000-8000-000000000101",
+        queuedAt: "2026-06-28T10:00:00.000Z",
+        r2Key: "tmp/kpp/old.csv",
+      }),
+    );
+    store.save(
+      createCompletedStagingRun({
+        id: "00000000-0000-4000-8000-000000000102",
+        queuedAt: "2026-06-28T11:00:00.000Z",
+        r2Key: "tmp/kpp/new.csv",
+      }),
+    );
+
+    await importCurrentKppCatalogue({ catalogue, storage, store });
+
+    expect(requestedKeys).toEqual(["tmp/kpp/new.csv"]);
+    await expect(catalogue.list()).resolves.toEqual([
+      expect.objectContaining({
+        sourceId: "KPP-NEW",
       }),
     ]);
   });

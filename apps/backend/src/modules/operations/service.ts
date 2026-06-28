@@ -533,6 +533,31 @@ function createCatalogueUpdateValue(entry: PublicEntityCatalogueEntry) {
   };
 }
 
+function getRunSortTimestamp(run: OperationsRun) {
+  return run.timing.finishedAt ?? run.timing.startedAt ?? run.timing.queuedAt;
+}
+
+function findLatestStagedKppSourceRun(store: OperationsRunStore) {
+  return store.list().reduce<OperationsRun | undefined>((latestRun, run) => {
+    if (
+      run.operationKey !== kppStagingOperationKey ||
+      run.status !== "completed" ||
+      run.staging?.status !== "staged" ||
+      !run.staging.r2Key
+    ) {
+      return latestRun;
+    }
+
+    if (!latestRun) {
+      return run;
+    }
+
+    return getRunSortTimestamp(run).localeCompare(getRunSortTimestamp(latestRun)) > 0
+      ? run
+      : latestRun;
+  }, undefined);
+}
+
 function createPostgresClient(connectionString: string) {
   return postgres(connectionString, {
     prepare: false,
@@ -774,8 +799,8 @@ export async function importCurrentKppCatalogue({
   storage,
   store,
 }: ImportCurrentKppCatalogueOptions) {
-  const stagingRun = store.findByOperationKey(kppStagingOperationKey);
-  const r2Key = stagingRun?.staging?.status === "staged" ? stagingRun.staging.r2Key : null;
+  const stagingRun = findLatestStagedKppSourceRun(store);
+  const r2Key = stagingRun?.staging?.r2Key ?? null;
 
   if (!r2Key) {
     throw new Error("KPP source must be staged before catalogue import");
