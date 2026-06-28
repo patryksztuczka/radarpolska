@@ -1,0 +1,42 @@
+apps/backend/src/modules/operations/service.ts
+  s_a729c9076f8032::t_dc1dead1275559 90,114-119,355-357,522-545,548,585,589-591
+  s_a729c9076f8032::t_09b00da883b463 290
+  s_a729c9076f8032::t_22b1d5159d137c 546-547,549-584,586-587
+  s_8ced6a1797e74e::t_b5c514ff1447e7 588,592
+apps/backend/src/index.test.ts
+  s_a729c9076f8032::t_5552ae20a61091 58-61
+  s_a729c9076f8032::t_ec74ab0b7caee6 242-329
+  s_a729c9076f8032::t_2f568c0b08788d 198
+apps/backend/src/modules/operations/service.test.ts
+  s_a729c9076f8032::t_388ef6b025cf68 32,117,204
+  s_a729c9076f8032::t_3c2b7ea4e682e3 7,268-323
+  s_a729c9076f8032::t_9e1d4fbd52efc4 324-326,328-393
+  s_a729c9076f8032::t_226b4ae0e6f487 81
+  s_8ced6a1797e74e::t_8306e632c5d9fd 327
+apps/backend/src/trpc/router.ts
+  s_a729c9076f8032::t_aeb417e49043a0 4,8,33-35,40-61
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "7da1d2e2da3b2289cd81a13a9d75ee77a1b1927c",
+  "prompts": {},
+  "sessions": {
+    "s_8ced6a1797e74e": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e4d-a708-7d21-953f-6766b0170cae",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    },
+    "s_a729c9076f8032": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0e52-d1b2-7af2-8669-aa46ccb10e18",
+        "model": "gpt-5.5"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    }
+  }
+}
