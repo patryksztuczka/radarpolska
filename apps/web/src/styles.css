@@ -137,9 +137,26 @@ dd {
   box-shadow: 0 14px 30px rgb(33 71 63 / 24%);
 }
 
+.iconActionButton {
+  display: inline-grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  border: 1px solid #b8c9c3;
+  border-radius: 999px;
+  background: #f8fbf9;
+  color: #21473f;
+  cursor: pointer;
+}
+
 .actionButton:disabled {
   cursor: wait;
   opacity: 0.7;
+}
+
+.iconActionButton:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .operationsGrid {
@@ -188,8 +205,37 @@ dd {
   margin-bottom: 20px;
 }
 
+.stagingGrid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 20px;
+  border: 1px solid #dbe3df;
+  border-radius: 18px;
+  padding: 18px;
+  background: #fbfdfc;
+}
+
 .sourceSpan {
   grid-column: 1 / -1;
+}
+
+.stageBadge {
+  display: inline-flex;
+  min-height: 28px;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  font-weight: 750;
+}
+
+.stageBadgeOk {
+  background: #e7f3e6;
+  color: #1f6a3a;
+}
+
+.stageBadgeFailed {
+  background: #f8e7e5;
+  color: #a5342f;
 }
 
 .emptyState {
@@ -216,6 +262,12 @@ dd {
   margin-bottom: 0;
   color: #5d716d;
   line-height: 1.6;
+}
+
+.runError {
+  margin: 6px 0 0;
+  color: #a5342f;
+  line-height: 1.5;
 }
 
 .runList {

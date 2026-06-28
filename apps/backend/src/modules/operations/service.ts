@@ -8,6 +8,16 @@ export interface KppSourceMetadata {
   readonly resourceFormat: string;
 }
 
+export interface KppSourceStagingMetadata {
+  readonly status: "staged" | "failed";
+  readonly r2Key: string | null;
+  readonly byteSize: number | null;
+  readonly checksumSha256: string | null;
+  readonly retention: {
+    readonly status: "temporary";
+  };
+}
+
 export interface OperationsRun {
   readonly id: string;
   readonly kind: "import" | "enrichment";
@@ -15,6 +25,7 @@ export interface OperationsRun {
   readonly sourceLabel: string;
   readonly sourceUrl: string | null;
   readonly source: KppSourceMetadata | null;
+  readonly staging: KppSourceStagingMetadata | null;
   readonly trigger: "manual" | "scheduled" | "system";
   readonly status:
     | "pending"
@@ -63,9 +74,19 @@ interface OperationsRunStore {
   findByOperationKey(operationKey: string): OperationsRun | undefined;
 }
 
+export interface TemporaryKppSourceStorage {
+  putTemporaryObject(input: {
+    readonly key: string;
+    readonly body: ReadableStream<Uint8Array>;
+    readonly metadata: Record<string, string>;
+    readonly contentType: string | null;
+  }): Promise<void>;
+}
+
 export interface OperationsServices {
   readonly fetch: typeof fetch;
   readonly store: OperationsRunStore;
+  readonly storage: TemporaryKppSourceStorage | null;
 }
 
 interface DiscoverLatestKppSourceOptions {
@@ -74,6 +95,12 @@ interface DiscoverLatestKppSourceOptions {
 }
 
 interface GetOperationsOverviewOptions {
+  readonly store: OperationsRunStore;
+}
+
+interface StageLatestKppSourceOptions {
+  readonly fetch: typeof fetch;
+  readonly storage: TemporaryKppSourceStorage;
   readonly store: OperationsRunStore;
 }
 
@@ -101,6 +128,7 @@ const kppDatasetId = "3520";
 const kppDatasetTitle =
   "Dane podmiotów świadczących usługi publiczne z Katalogu Podmiotów Publicznych";
 const kppDiscoveryOperationKey = "kpp-source-discovery";
+const kppStagingOperationKey = "kpp-source-staging";
 const kppResourcesUrl =
   "https://api.dane.gov.pl/datasets/3520,dane-podmiotow-swiadczacych-usugi-publiczne-z-kat/resources?page=1";
 
@@ -181,6 +209,7 @@ function createCompletedDiscoveryRun(
     sourceLabel: source.resourceTitle,
     sourceUrl: source.resourceDownloadUrl,
     source,
+    staging: null,
     trigger: "manual",
     status: "completed",
     counters: {
@@ -199,6 +228,50 @@ function createCompletedDiscoveryRun(
       durationMs: 0,
     },
     error: null,
+  };
+}
+
+function createStagingRunBase(
+  source: KppSourceMetadata,
+  runId: string,
+): Omit<OperationsRun, "status" | "timing" | "error" | "counters" | "staging"> {
+  return {
+    id: runId,
+    kind: "import",
+    operationKey: kppStagingOperationKey,
+    sourceLabel: source.resourceTitle,
+    sourceUrl: source.resourceDownloadUrl,
+    source,
+    trigger: "manual",
+  };
+}
+
+function getErrorMessage(error: unknown) {
+  return error instanceof Error ? error.message : "KPP source staging failed";
+}
+
+function createStagingObjectKey(source: KppSourceMetadata, runId: string) {
+  return `tmp/kpp/${source.resourceId}/${runId}.csv`;
+}
+
+function createTemporaryStagingMetadata(source: KppSourceMetadata) {
+  return {
+    "radarpolska.retention.status": "temporary",
+    "radarpolska.source.resourceId": source.resourceId,
+  };
+}
+
+function toHex(buffer: ArrayBuffer) {
+  return [...new Uint8Array(buffer)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+async function checksumStream(body: ReadableStream<Uint8Array>) {
+  const bytes = await new Response(body).arrayBuffer();
+  const checksum = await crypto.subtle.digest("SHA-256", bytes);
+
+  return {
+    byteSize: bytes.byteLength,
+    checksumSha256: toHex(checksum),
   };
 }
 
@@ -221,12 +294,24 @@ export function createInMemoryOperationsRunStore(): OperationsRunStore {
   };
 }
 
+export function createR2TemporaryKppSourceStorage(bucket: R2Bucket): TemporaryKppSourceStorage {
+  return {
+    async putTemporaryObject({ key, body, metadata, contentType }) {
+      await bucket.put(key, body, {
+        customMetadata: metadata,
+        httpMetadata: contentType ? { contentType } : undefined,
+      });
+    },
+  };
+}
+
 export function createOperationsServices(
   overrides?: Partial<OperationsServices>,
 ): OperationsServices {
   return {
     fetch: overrides?.fetch ?? fetch,
     store: overrides?.store ?? createInMemoryOperationsRunStore(),
+    storage: overrides?.storage ?? null,
   };
 }
 
@@ -271,6 +356,117 @@ export async function discoverLatestKppSource({
   );
 
   return store.save(run);
+}
+
+export async function stageLatestKppSource({
+  fetch: fetcher,
+  storage,
+  store,
+}: StageLatestKppSourceOptions) {
+  const discoveryRun = store.findByOperationKey(kppDiscoveryOperationKey);
+  const source = discoveryRun?.source;
+
+  if (!source) {
+    throw new Error("KPP source must be discovered before staging");
+  }
+
+  const runId = createRunId();
+  const startedAt = new Date().toISOString();
+  const baseRun = createStagingRunBase(source, runId);
+  const key = createStagingObjectKey(source, runId);
+
+  try {
+    const response = await fetcher(source.resourceDownloadUrl);
+
+    if (!response.ok) {
+      throw new Error(`KPP staging download failed with HTTP ${response.status}`);
+    }
+
+    if (!response.body) {
+      throw new Error("KPP staging download did not return a response body");
+    }
+
+    const [storageBody, checksumBody] = response.body.tee();
+    const [{ byteSize, checksumSha256 }] = await Promise.all([
+      checksumStream(checksumBody),
+      storage.putTemporaryObject({
+        key,
+        body: storageBody,
+        metadata: createTemporaryStagingMetadata(source),
+        contentType: response.headers.get("content-type"),
+      }),
+    ]);
+    const finishedAt = new Date().toISOString();
+
+    return store.save({
+      ...baseRun,
+      status: "completed",
+      counters: {
+        discovered: 0,
+        queued: 0,
+        processed: 1,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 0,
+      },
+      timing: {
+        queuedAt: startedAt,
+        startedAt,
+        finishedAt,
+        durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+      },
+      staging: {
+        status: "staged",
+        r2Key: key,
+        byteSize,
+        checksumSha256,
+        retention: {
+          status: "temporary",
+        },
+      },
+      error: null,
+    });
+  } catch (error) {
+    const finishedAt = new Date().toISOString();
+
+    store.save({
+      ...baseRun,
+      status: "failed",
+      counters: {
+        discovered: 0,
+        queued: 0,
+        processed: 0,
+        created: 0,
+        updated: 0,
+        skipped: 0,
+        failed: 1,
+      },
+      timing: {
+        queuedAt: startedAt,
+        startedAt,
+        finishedAt,
+        durationMs: Date.parse(finishedAt) - Date.parse(startedAt),
+      },
+      staging: {
+        status: "failed",
+        r2Key: key,
+        byteSize: null,
+        checksumSha256: null,
+        retention: {
+          status: "temporary",
+        },
+      },
+      error: {
+        code: "KPP_STAGING_FAILED",
+        message: getErrorMessage(error),
+        retryable: true,
+        details: null,
+      },
+    });
+
+    throw error;
+  }
 }
 
 export async function getOperationsOverview({
