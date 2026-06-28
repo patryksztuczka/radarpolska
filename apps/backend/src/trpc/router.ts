@@ -16,6 +16,14 @@ const trpc = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
 });
 
+function getConfiguredCatalogue(ctx: TrpcContext) {
+  if (!ctx.operations.catalogue) {
+    throw new Error("KPP catalogue database is not configured");
+  }
+
+  return ctx.operations.catalogue;
+}
+
 export const appRouter = trpc.router({
   health: trpc.procedure.query(() => Effect.runSync(getHealth())),
   operations: trpc.router({
@@ -58,7 +66,7 @@ export const appRouter = trpc.router({
     ),
     importCurrentKppCatalogue: trpc.procedure.mutation(({ ctx }) =>
       importCurrentKppCatalogue({
-        catalogue: ctx.operations.catalogue,
+        catalogue: getConfiguredCatalogue(ctx),
         storage: ctx.operations.storage ?? {
           async putTemporaryObject() {
             throw new Error("KPP staging storage is not configured");

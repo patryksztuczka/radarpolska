@@ -1,4 +1,8 @@
 import { createHash } from "node:crypto";
+import { drizzle } from "drizzle-orm/postgres-js";
+import postgres from "postgres";
+
+import { currentPublicEntityCatalogue } from "../../db/schema";
 
 export interface KppSourceMetadata {
   readonly datasetId: string;
@@ -106,8 +110,8 @@ interface OperationsRunStore {
 }
 
 interface PublicEntityCatalogueStore {
-  list(): readonly PublicEntityCatalogueEntry[];
-  upsert(entry: PublicEntityCatalogueEntry): PublicEntityCatalogueEntry;
+  list(): Promise<readonly PublicEntityCatalogueEntry[]>;
+  upsert(entry: PublicEntityCatalogueEntry): Promise<PublicEntityCatalogueEntry>;
 }
 
 export interface TemporaryKppSourceStorage {
@@ -122,7 +126,7 @@ export interface TemporaryKppSourceStorage {
 }
 
 export interface OperationsServices {
-  readonly catalogue: PublicEntityCatalogueStore;
+  readonly catalogue: PublicEntityCatalogueStore | null;
   readonly fetch: typeof fetch;
   readonly store: OperationsRunStore;
   readonly storage: TemporaryKppSourceStorage | null;
@@ -134,7 +138,7 @@ interface DiscoverLatestKppSourceOptions {
 }
 
 interface GetOperationsOverviewOptions {
-  readonly catalogue?: PublicEntityCatalogueStore;
+  readonly catalogue?: PublicEntityCatalogueStore | null;
   readonly store: OperationsRunStore;
 }
 
@@ -452,9 +456,7 @@ async function parseSemicolonDelimitedCsvStream(body: ReadableStream<Uint8Array>
   const dataRows = firstContentRow === -1 ? [] : state.rows.slice(firstContentRow + 1);
 
   return dataRows.map((values) =>
-    Object.fromEntries(
-      headers.map((header, index) => [header.trim(), values[index]?.trim() ?? ""]),
-    ),
+    Object.fromEntries(headers.map((header, index) => [header, values[index] ?? ""])),
   );
 }
 
@@ -464,10 +466,130 @@ function isAffirmative(value: string | undefined) {
 
 function readKppField(row: Record<string, string>, aliases: readonly string[]) {
   return (
-    aliases
-      .map((alias) => row[alias])
-      .find((value) => value !== undefined)
+    Object.entries(row)
+      .find(([header]) => aliases.includes(header.trim()))?.[1]
       ?.trim() ?? ""
+  );
+}
+
+function toCatalogueEntry(row: Partial<PublicEntityCatalogueEntry>): PublicEntityCatalogueEntry {
+  return {
+    sourceId: row.sourceId ?? "",
+    name: row.name ?? "",
+    type: row.type ?? "",
+    legalForm: row.legalForm ?? "",
+    ownershipForm: row.ownershipForm ?? "",
+    financingForm: row.financingForm ?? "",
+    location: row.location ?? {
+      voivodeship: "",
+      county: "",
+      municipality: "",
+    },
+    raw: row.raw ?? {},
+  };
+}
+
+function toLocationCounts(location: PublicEntityCatalogueEntry["location"]) {
+  return [
+    location.voivodeship ? `województwo: ${location.voivodeship}` : "",
+    location.county ? `powiat: ${location.county}` : "",
+    location.municipality ? `gmina: ${location.municipality}` : "",
+  ];
+}
+
+function mapReturnedCatalogueRow(row: unknown) {
+  const value = row as Partial<PublicEntityCatalogueEntry>;
+
+  return toCatalogueEntry(value);
+}
+
+function createCatalogueInsertValue(entry: PublicEntityCatalogueEntry) {
+  return {
+    sourceId: entry.sourceId,
+    name: entry.name,
+    type: entry.type,
+    legalForm: entry.legalForm,
+    ownershipForm: entry.ownershipForm,
+    financingForm: entry.financingForm,
+    location: entry.location,
+    raw: entry.raw,
+    updatedAt: new Date(),
+  };
+}
+
+function createCatalogueUpdateValue(entry: PublicEntityCatalogueEntry) {
+  return {
+    name: entry.name,
+    type: entry.type,
+    legalForm: entry.legalForm,
+    ownershipForm: entry.ownershipForm,
+    financingForm: entry.financingForm,
+    location: entry.location,
+    raw: entry.raw,
+    updatedAt: new Date(),
+  };
+}
+
+function createPostgresClient(connectionString: string) {
+  return postgres(connectionString, {
+    prepare: false,
+  });
+}
+
+function createDrizzleClient(connectionString: string) {
+  return drizzle(createPostgresClient(connectionString));
+}
+
+type DrizzleCatalogueDatabase = {
+  insert(table: typeof currentPublicEntityCatalogue): {
+    values(value: ReturnType<typeof createCatalogueInsertValue>): {
+      onConflictDoUpdate(input: {
+        target: typeof currentPublicEntityCatalogue.sourceId;
+        set: ReturnType<typeof createCatalogueUpdateValue>;
+      }): {
+        returning(): Promise<unknown[]>;
+      };
+    };
+  };
+  select(): {
+    from(table: typeof currentPublicEntityCatalogue): {
+      orderBy(column: typeof currentPublicEntityCatalogue.sourceId): Promise<unknown[]> | unknown[];
+    };
+  };
+};
+
+export function createDrizzlePublicEntityCatalogueStore(
+  db: DrizzleCatalogueDatabase,
+): PublicEntityCatalogueStore {
+  return {
+    async list() {
+      const rows = await db
+        .select()
+        .from(currentPublicEntityCatalogue)
+        .orderBy(currentPublicEntityCatalogue.sourceId);
+
+      return rows.map(mapReturnedCatalogueRow);
+    },
+    async upsert(entry) {
+      const [row] = await db
+        .insert(currentPublicEntityCatalogue)
+        .values(createCatalogueInsertValue(entry))
+        .onConflictDoUpdate({
+          target: currentPublicEntityCatalogue.sourceId,
+          set: createCatalogueUpdateValue(entry),
+        })
+        .returning();
+
+      return mapReturnedCatalogueRow(row ?? entry);
+    },
+  };
+}
+
+export function createPostgresPublicEntityCatalogueStore(
+  connectionString: string,
+): PublicEntityCatalogueStore {
+  return createDrizzlePublicEntityCatalogueStore(
+    createDrizzleClient(connectionString) as DrizzleCatalogueDatabase,
   );
 }
 
@@ -519,7 +641,10 @@ function summarizeCatalogue(
       byLegalForm: incrementCount(summary.byLegalForm, entry.legalForm),
       byOwnershipForm: incrementCount(summary.byOwnershipForm, entry.ownershipForm),
       byFinancingForm: incrementCount(summary.byFinancingForm, entry.financingForm),
-      byLocation: incrementCount(summary.byLocation, entry.location.voivodeship),
+      byLocation: toLocationCounts(entry.location).reduce(
+        (counts, locationKey) => incrementCount(counts, locationKey),
+        summary.byLocation,
+      ),
     }),
     emptyOverview.catalogue,
   );
@@ -582,7 +707,7 @@ export function createInMemoryPublicEntityCatalogueStore(): PublicEntityCatalogu
   const entries = new Map<string, PublicEntityCatalogueEntry>();
 
   return {
-    list() {
+    async list() {
       return [...entries.values()].reduce<PublicEntityCatalogueEntry[]>(
         (sortedEntries, entry) =>
           insertSorted(sortedEntries, entry, (left, right) =>
@@ -591,7 +716,7 @@ export function createInMemoryPublicEntityCatalogueStore(): PublicEntityCatalogu
         [],
       );
     },
-    upsert(entry) {
+    async upsert(entry) {
       entries.set(entry.sourceId, entry);
       return entry;
     },
@@ -620,7 +745,7 @@ export function createOperationsServices(
 ): OperationsServices {
   return {
     fetch: overrides?.fetch ?? fetch,
-    catalogue: overrides?.catalogue ?? createInMemoryPublicEntityCatalogueStore(),
+    catalogue: overrides?.catalogue ?? null,
     store: overrides?.store ?? createInMemoryOperationsRunStore(),
     storage: overrides?.storage ?? null,
   };
@@ -649,9 +774,7 @@ export async function importCurrentKppCatalogue({
     .map(toPublicEntityCatalogueEntry)
     .filter((entry): entry is PublicEntityCatalogueEntry => entry !== null);
 
-  for (const entry of entries) {
-    catalogue.upsert(entry);
-  }
+  await Promise.all(entries.map((entry) => catalogue.upsert(entry)));
 
   return entries;
 }
@@ -894,7 +1017,7 @@ export async function getOperationsOverview({
 }: GetOperationsOverviewOptions): Promise<OperationsOverview> {
   const runs = store.list();
   const catalogueSummary = catalogue
-    ? summarizeCatalogue(catalogue.list())
+    ? summarizeCatalogue(await catalogue.list())
     : emptyOverview.catalogue;
 
   if (!runs.length) {

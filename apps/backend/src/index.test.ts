@@ -437,7 +437,9 @@ describe("backend app", () => {
         "Budżet JST": 1,
       },
       byLocation: {
-        małopolskie: 2,
+        "województwo: małopolskie": 2,
+        "powiat: Kraków": 2,
+        "gmina: Kraków": 2,
       },
     });
   });

@@ -1,8 +1,12 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it, vi } from "vitest";
 
+import { currentPublicEntityCatalogue } from "../../db/schema";
 import {
   createInMemoryOperationsRunStore,
   createInMemoryPublicEntityCatalogueStore,
+  createDrizzlePublicEntityCatalogueStore,
   discoverLatestKppSource,
   getOperationsOverview,
   importCurrentKppCatalogue,
@@ -13,6 +17,10 @@ import {
 
 const kppResourcesUrl =
   "https://api.dane.gov.pl/datasets/3520,dane-podmiotow-swiadczacych-usugi-publiczne-z-kat/resources?page=1";
+const representativeKppCsv = readFileSync(
+  new URL("./fixtures/kpp-representative.csv", import.meta.url),
+  "utf8",
+);
 
 function createStoreWithStagedKppSource() {
   const store = createInMemoryOperationsRunStore();
@@ -62,6 +70,63 @@ function createStoreWithStagedKppSource() {
 }
 
 describe("operations service", () => {
+  it("persists imported KPP rows through the current catalogue table store", async () => {
+    const insertedTables: unknown[] = [];
+    const selectedTables: unknown[] = [];
+    const storedRows: unknown[] = [];
+    const catalogue = createDrizzlePublicEntityCatalogueStore({
+      insert(table) {
+        insertedTables.push(table);
+
+        return {
+          values(value: unknown) {
+            storedRows.push(value);
+
+            return {
+              onConflictDoUpdate() {
+                return {
+                  async returning() {
+                    return [value];
+                  },
+                };
+              },
+            };
+          },
+        };
+      },
+      select() {
+        return {
+          from(table: unknown) {
+            selectedTables.push(table);
+
+            return {
+              orderBy() {
+                return storedRows;
+              },
+            };
+          },
+        };
+      },
+    });
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new Response(representativeKppCsv).body;
+      },
+      async deleteTemporaryObject() {},
+    };
+
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage,
+      store: createStoreWithStagedKppSource(),
+    });
+
+    await expect(catalogue.list()).resolves.toHaveLength(2);
+    expect(insertedTables).toEqual([currentPublicEntityCatalogue, currentPublicEntityCatalogue]);
+    expect(selectedTables).toEqual([currentPublicEntityCatalogue]);
+  });
+
   it("imports active public KPP rows from the staged semicolon-delimited CSV", async () => {
     const store = createInMemoryOperationsRunStore();
     const catalogue = createInMemoryPublicEntityCatalogueStore();
@@ -109,7 +174,7 @@ describe("operations service", () => {
 
     await importCurrentKppCatalogue({ catalogue, storage, store });
 
-    expect(catalogue.list()).toEqual([
+    await expect(catalogue.list()).resolves.toEqual([
       expect.objectContaining({
         sourceId: "KPP-1",
         name: "Urząd Miasta Krakowa",
@@ -135,9 +200,54 @@ describe("operations service", () => {
         byLegalForm: { "Jednostka budżetowa": 1 },
         byOwnershipForm: { Publiczna: 1 },
         byFinancingForm: { "Budżet państwa": 1 },
-        byLocation: { małopolskie: 1 },
+        byLocation: {
+          "województwo: małopolskie": 1,
+          "powiat: Kraków": 1,
+          "gmina: Kraków": 1,
+        },
       },
     });
+  });
+
+  it("retains literal raw KPP headers and row values from the staged CSV", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const stagedCsv = [
+      " KPPID ; Nazwa ;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina",
+      " KPP-RAW ;  Urząd z odstępami  ;Tak;Tak; Urząd ; Jednostka budżetowa ;Publiczna;Budżet państwa; małopolskie ; Kraków ; Kraków ",
+    ].join("\n");
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new Response(stagedCsv).body;
+      },
+      async deleteTemporaryObject() {},
+    };
+
+    await importCurrentKppCatalogue({
+      catalogue,
+      storage,
+      store: createStoreWithStagedKppSource(),
+    });
+
+    await expect(catalogue.list()).resolves.toEqual([
+      expect.objectContaining({
+        sourceId: "KPP-RAW",
+        name: "Urząd z odstępami",
+        raw: {
+          " KPPID ": " KPP-RAW ",
+          " Nazwa ": "  Urząd z odstępami  ",
+          "Czy aktywny": "Tak",
+          "Czy publiczny": "Tak",
+          "Typ podmiotu": " Urząd ",
+          "Forma prawna": " Jednostka budżetowa ",
+          "Forma własności": "Publiczna",
+          "Forma finansowania": "Budżet państwa",
+          Województwo: " małopolskie ",
+          Powiat: " Kraków ",
+          Gmina: " Kraków ",
+        },
+      }),
+    ]);
   });
 
   it("skips active public KPP rows with empty identifiers", async () => {
@@ -158,7 +268,7 @@ describe("operations service", () => {
 
     await importCurrentKppCatalogue({ catalogue, storage, store });
 
-    expect(catalogue.list()).toEqual([]);
+    await expect(catalogue.list()).resolves.toEqual([]);
   });
 
   it("maps Polish KPP headers into catalogue fields", async () => {
@@ -179,7 +289,7 @@ describe("operations service", () => {
 
     await importCurrentKppCatalogue({ catalogue, storage, store });
 
-    expect(catalogue.list()).toEqual([
+    await expect(catalogue.list()).resolves.toEqual([
       expect.objectContaining({
         sourceId: "ABC-123",
         name: "Gminny Ośrodek Pomocy",
@@ -194,6 +304,35 @@ describe("operations service", () => {
         },
       }),
     ]);
+  });
+
+  it("imports representative KPP CSV fixture rows and aggregates full locations", async () => {
+    const catalogue = createInMemoryPublicEntityCatalogueStore();
+    const storage: TemporaryKppSourceStorage = {
+      async putTemporaryObject() {},
+      async getTemporaryObject() {
+        return new Response(representativeKppCsv).body;
+      },
+      async deleteTemporaryObject() {},
+    };
+    const store = createStoreWithStagedKppSource();
+
+    await importCurrentKppCatalogue({ catalogue, storage, store });
+
+    await expect(getOperationsOverview({ catalogue, store })).resolves.toMatchObject({
+      catalogue: {
+        totalPublicEntities: 2,
+        byType: {
+          Urząd: 1,
+          Biblioteka: 1,
+        },
+        byLocation: {
+          "województwo: małopolskie": 2,
+          "powiat: Kraków": 2,
+          "gmina: Kraków": 2,
+        },
+      },
+    });
   });
 
   it("parses staged KPP CSV without reading the whole object through Response.text", async () => {
@@ -234,7 +373,7 @@ describe("operations service", () => {
       textSpy.mockRestore();
     }
 
-    expect(catalogue.list()).toHaveLength(1);
+    await expect(catalogue.list()).resolves.toHaveLength(1);
   });
 
   it("stages a discovered KPP source in temporary storage and records checksum metadata", async () => {
