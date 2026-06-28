@@ -7,6 +7,7 @@ import {
   deleteExpiredTemporaryKppStagingObjects,
   discoverLatestKppSource,
   getOperationsOverview,
+  importCurrentKppCatalogue,
   stageLatestKppSource,
 } from "../modules/operations/service";
 import type { TrpcContext } from "./context";
@@ -14,6 +15,14 @@ import type { TrpcContext } from "./context";
 const trpc = initTRPC.context<TrpcContext>().create({
   transformer: superjson,
 });
+
+function getConfiguredCatalogue(ctx: TrpcContext) {
+  if (!ctx.operations.catalogue) {
+    throw new Error("KPP catalogue database is not configured");
+  }
+
+  return ctx.operations.catalogue;
+}
 
 export const appRouter = trpc.router({
   health: trpc.procedure.query(() => Effect.runSync(getHealth())),
@@ -29,6 +38,9 @@ export const appRouter = trpc.router({
           async putTemporaryObject() {
             throw new Error("KPP staging storage is not configured");
           },
+          async getTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
           async deleteTemporaryObject() {
             throw new Error("KPP staging storage is not configured");
           },
@@ -40,6 +52,26 @@ export const appRouter = trpc.router({
       deleteExpiredTemporaryKppStagingObjects({
         storage: ctx.operations.storage ?? {
           async putTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+          async getTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+          async deleteTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+        },
+        store: ctx.operations.store,
+      }),
+    ),
+    importCurrentKppCatalogue: trpc.procedure.mutation(({ ctx }) =>
+      importCurrentKppCatalogue({
+        catalogue: getConfiguredCatalogue(ctx),
+        storage: ctx.operations.storage ?? {
+          async putTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+          async getTemporaryObject() {
             throw new Error("KPP staging storage is not configured");
           },
           async deleteTemporaryObject() {

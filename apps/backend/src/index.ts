@@ -7,6 +7,8 @@ import type { AppBindings } from "./env";
 import { getHealth } from "./modules/health/service";
 import {
   createOperationsServices,
+  createInMemoryPublicEntityCatalogueStore,
+  createPostgresPublicEntityCatalogueStore,
   createR2TemporaryKppSourceStorage,
   type OperationsServices,
 } from "./modules/operations/service";
@@ -22,6 +24,8 @@ interface CreateAppOptions {
 export function createApp(options?: CreateAppOptions) {
   const app = new Hono<AppEnv>();
   const operations = createOperationsServices(options?.operations);
+  const localCatalogue = createInMemoryPublicEntityCatalogueStore();
+  let dbCatalogue: OperationsServices["catalogue"] = null;
 
   app.use(
     "/trpc/*",
@@ -44,6 +48,11 @@ export function createApp(options?: CreateAppOptions) {
 
         return createTrpcContext(env, {
           ...operations,
+          catalogue:
+            operations.catalogue ??
+            (env.DB?.connectionString
+              ? (dbCatalogue ??= createPostgresPublicEntityCatalogueStore(env.DB.connectionString))
+              : localCatalogue),
           storage:
             operations.storage ??
             (env.KPP_STAGING_BUCKET

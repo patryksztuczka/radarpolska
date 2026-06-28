@@ -1,0 +1,6 @@
+KPPID;Nazwa;Czy aktywny;Czy publiczny;Typ podmiotu;Forma prawna;Forma własności;Forma finansowania;Województwo;Powiat;Gmina
+KPP-100;Urząd Miasta Krakowa;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;małopolskie;Kraków;Kraków
+KPP-101;Biblioteka Publiczna w Krakowie;Tak;Tak;Biblioteka;Instytucja kultury;Publiczna;Budżet JST;małopolskie;Kraków;Kraków
+KPP-102;Prywatna przychodnia;Tak;Nie;Przychodnia;Spółka;Prywatna;Prywatne;mazowieckie;Warszawa;Warszawa
+;Urząd bez identyfikatora;Tak;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;śląskie;Katowice;Katowice
+KPP-103;Nieaktywny urząd;Nie;Tak;Urząd;Jednostka budżetowa;Publiczna;Budżet państwa;śląskie;Katowice;Katowice
