@@ -239,7 +239,7 @@ describe("backend app", () => {
     expect(overviewBody.result.data.json.runs).toHaveLength(2);
   });
 
-  it("deletes expired KPP staging objects through tRPC and exposes the retention transition", async () => {
+  it("does not let tRPC callers force early KPP staging deletion with a future timestamp", async () => {
     const deletedKeys: string[] = [];
     const app = createApp({
       operations: {
@@ -309,7 +309,7 @@ describe("backend app", () => {
     const overviewBody = (await overviewResponse.json()) as TrpcOperationsOverviewResponse;
 
     expect(cleanupResponse.status).toBe(200);
-    expect(deletedKeys).toEqual([stageBody.result.data.json.staging?.r2Key]);
+    expect(deletedKeys).toEqual([]);
     expect(
       overviewBody.result.data.json.runs.find(
         (run) =>
@@ -321,7 +321,7 @@ describe("backend app", () => {
     ).toMatchObject({
       staging: {
         retention: {
-          deletionStatus: "deleted",
+          deletionStatus: "pending",
         },
       },
     });

@@ -1,7 +1,6 @@
 import { initTRPC } from "@trpc/server";
 import superjson from "superjson";
 import { Effect } from "effect";
-import { z } from "zod";
 
 import { getHealth } from "../modules/health/service";
 import {
@@ -37,28 +36,19 @@ export const appRouter = trpc.router({
         store: ctx.operations.store,
       }),
     ),
-    deleteExpiredTemporaryKppStagingObjects: trpc.procedure
-      .input(
-        z
-          .object({
-            now: z.string().datetime().optional(),
-          })
-          .optional(),
-      )
-      .mutation(({ ctx, input }) =>
-        deleteExpiredTemporaryKppStagingObjects({
-          now: input?.now ? new Date(input.now) : undefined,
-          storage: ctx.operations.storage ?? {
-            async putTemporaryObject() {
-              throw new Error("KPP staging storage is not configured");
-            },
-            async deleteTemporaryObject() {
-              throw new Error("KPP staging storage is not configured");
-            },
+    deleteExpiredTemporaryKppStagingObjects: trpc.procedure.mutation(({ ctx }) =>
+      deleteExpiredTemporaryKppStagingObjects({
+        storage: ctx.operations.storage ?? {
+          async putTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
           },
-          store: ctx.operations.store,
-        }),
-      ),
+          async deleteTemporaryObject() {
+            throw new Error("KPP staging storage is not configured");
+          },
+        },
+        store: ctx.operations.store,
+      }),
+    ),
   }),
 });
 
