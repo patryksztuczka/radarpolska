@@ -1,0 +1,41 @@
+apps/backend/drizzle/0000_redundant_revanche.sql
+  s_1ee61e1dafa7a3::t_1f5dd8f8f2079e 1-16
+apps/backend/src/index.test.ts
+  s_1ee61e1dafa7a3::t_60c3be8fadce9d 14-30,54-68
+  s_1ee61e1dafa7a3::t_cda1872bd49a53 69-70
+apps/backend/src/modules/operations/service.ts
+  s_1ee61e1dafa7a3::t_f4b1ff35590b6b 1-64
+apps/backend/src/trpc/router.ts
+  s_1ee61e1dafa7a3::t_f4b1ff35590b6b 6,15-17
+apps/web/src/main.tsx
+  s_1ee61e1dafa7a3::t_21bbe0aa2912d6 12,20-22,29,43-111
+  s_1ee61e1dafa7a3::t_b7e7a0f83f7d24 112
+pnpm-workspace.yaml
+  s_1ee61e1dafa7a3::t_0d5b6d3f41e2c4 4-6
+apps/backend/src/db/schema.ts
+  s_1ee61e1dafa7a3::t_f4b1ff35590b6b 3-31,33-38,48-51
+  s_1ee61e1dafa7a3::t_40f0bca09f15b1 39-47
+apps/web/src/styles.css
+  s_1ee61e1dafa7a3::t_40f0bca09f15b1 174
+  s_1ee61e1dafa7a3::t_21bbe0aa2912d6 3-5,7-8,28,30,35,38,57-60,64-71,73,95-97,99-100,124-173,175-216,222-227,237-245
+apps/backend/drizzle/meta/0000_snapshot.json
+  s_1ee61e1dafa7a3::t_21d699ab848113 1-124
+apps/backend/drizzle/meta/_journal.json
+  s_1ee61e1dafa7a3::t_28820b077992fc 1-13
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.3",
+  "base_commit_sha": "e3143925daf51a5ff68b01581dfe792e8cf136e4",
+  "prompts": {},
+  "sessions": {
+    "s_1ee61e1dafa7a3": {
+      "agent_id": {
+        "tool": "codex",
+        "id": "019f0db4-d301-7341-98b9-2045a41836af",
+        "model": "gpt-5.4"
+      },
+      "human_author": "Patryk Sztuczka <patryk.sztuczka00@gmail.com>"
+    }
+  }
+}
