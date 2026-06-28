@@ -9,6 +9,7 @@ import "./styles.css";
 
 function AdminSmokePage() {
   const health = trpc.health.useQuery();
+  const operations = trpc.operations.getOverview.useQuery();
 
   return (
     <main className="shell">
@@ -16,13 +17,16 @@ function AdminSmokePage() {
         <div>
           <p className="eyebrow">Private admin</p>
           <h1>Radarpolska operations</h1>
+          <p className="lede">
+            Imports and enrichments can be monitored here before any worker pipelines are live.
+          </p>
         </div>
         <span className={health.data?.status === "ok" ? "status statusOk" : "status"}>
           {health.data?.status ?? "checking"}
         </span>
       </section>
 
-      <section className="panel">
+      <section className="panel panelCompact">
         <h2>Backend health</h2>
         <dl>
           <div>
@@ -35,6 +39,76 @@ function AdminSmokePage() {
           </div>
         </dl>
         {health.error ? <p className="error">{health.error.message}</p> : null}
+      </section>
+
+      <section className="operationsGrid">
+        <article className="panel">
+          <div className="panelHeader">
+            <div>
+              <p className="eyebrow">Run summary</p>
+              <h2>Current activity</h2>
+            </div>
+          </div>
+
+          <dl className="statsGrid">
+            <div className="statCard">
+              <dt>Total runs</dt>
+              <dd>{operations.data?.summary.totalRuns ?? "-"}</dd>
+            </div>
+            <div className="statCard">
+              <dt>Active now</dt>
+              <dd>{operations.data?.summary.activeRuns ?? "-"}</dd>
+            </div>
+            <div className="statCard">
+              <dt>Succeeded</dt>
+              <dd>{operations.data?.summary.successfulRuns ?? "-"}</dd>
+            </div>
+            <div className="statCard">
+              <dt>Failed</dt>
+              <dd>{operations.data?.summary.failedRuns ?? "-"}</dd>
+            </div>
+          </dl>
+        </article>
+
+        <article className="panel">
+          <div className="panelHeader">
+            <div>
+              <p className="eyebrow">Queue state</p>
+              <h2>Recent runs</h2>
+            </div>
+            <span className="mutedLabel">
+              {operations.data?.summary.lastCompletedAt
+                ? `Last completed ${operations.data.summary.lastCompletedAt}`
+                : "No completed runs yet"}
+            </span>
+          </div>
+
+          {operations.error ? <p className="error">{operations.error.message}</p> : null}
+
+          {operations.data?.runs.length ? (
+            <ul className="runList">
+              {operations.data.runs.map((run) => (
+                <li className="runRow" key={run.id}>
+                  <div>
+                    <p className="runTitle">{run.sourceLabel}</p>
+                    <p className="runMeta">
+                      {run.kind} · {run.operationKey} · {run.status}
+                    </p>
+                  </div>
+                  <span className="runCount">{run.counters.processed}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="emptyState">
+              <p className="emptyTitle">No runs recorded</p>
+              <p className="emptyCopy">
+                RAD-6 exposes the final status, counter, timing, and error shape before real
+                importers start writing run records.
+              </p>
+            </div>
+          )}
+        </article>
       </section>
     </main>
   );
